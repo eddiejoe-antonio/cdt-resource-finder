@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import type { Resource } from "./types/resourceTypes";
-import { ResourceCard } from "./components/ResourceCard";
 import ResourceFinder from "./components/ResourceFinder";
 
 export default function App() {
@@ -22,7 +21,7 @@ export default function App() {
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
   return (
-    <div className="max-w-3xl mx-auto p-4">
+    <div>
       <h1 className="text-xl font-bold">Resource Finder</h1>
       <div className="opacity-80 mt-1">{count.toLocaleString()} resources</div>
       <ResourceFinder />

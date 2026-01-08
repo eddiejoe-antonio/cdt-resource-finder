@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 import type { Resource } from "../types/resourceTypes";
-import { fetchResourcesLocal } from "../utils/fetchResources"; // your CSV fetcher
+import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
 import Pagination from "./Pagination";
 
@@ -14,6 +14,7 @@ import {
   type County,
   type Service,
   splitCommaList,
+  normalizeValue,
 } from "../static/filters";
 
 const ITEMS_PER_PAGE = 9; // 3 cols × 3 rows
@@ -23,7 +24,7 @@ type IndexedResource = Resource & {
   servicesSet: Set<Service>;
 };
 
-function normalize(s: string) {
+function normalizeSearch(s: string) {
   return s.trim().toLowerCase();
 }
 
@@ -55,22 +56,31 @@ export default function ResourceFinder() {
 
   /**
    * Index counties/services once (fast filtering later)
-   * NOTE: this expects your Resource objects to include:
-   *  - countiesServedRaw?: string  (from CSV_FIELDS.counties)
-   *  - servicesIndividualsRaw?: string (from CSV_FIELDS.services)
+   * expects:
+   *  - countiesServedRaw?: string
+   *  - servicesIndividualsRaw?: string
    */
   const indexedResources = useMemo<IndexedResource[]>(() => {
-    const countyAllowed = new Set<string>(COUNTIES as unknown as string[]);
-    const serviceAllowed = new Set<string>(SERVICES as unknown as string[]);
+    // Build normalized lookup maps so we can:
+    // - match case-insensitively
+    // - still store canonical values (County/Service) in sets
+    const countyMap = new Map<string, County>(
+      COUNTIES.map((c) => [normalizeValue(c), c])
+    );
+    const serviceMap = new Map<string, Service>(
+      SERVICES.map((s) => [normalizeValue(s), s])
+    );
 
     return allResources.map((r) => {
       const counties = splitCommaList((r as any).countiesServedRaw)
-        .map((x) => x.trim())
-        .filter((x) => countyAllowed.has(x)) as County[];
+        .map(normalizeValue)
+        .map((n) => countyMap.get(n))
+        .filter(Boolean) as County[];
 
       const services = splitCommaList((r as any).servicesIndividualsRaw)
-        .map((x) => x.trim())
-        .filter((x) => serviceAllowed.has(x)) as Service[];
+        .map(normalizeValue)
+        .map((n) => serviceMap.get(n))
+        .filter(Boolean) as Service[];
 
       return {
         ...r,
@@ -81,10 +91,10 @@ export default function ResourceFinder() {
   }, [allResources]);
 
   const filtered = useMemo(() => {
-    const q = normalize(searchQuery);
+    const q = normalizeSearch(searchQuery);
 
     return indexedResources.filter((r) => {
-      // Search (simple contains across a few fields)
+      // Search (case-insensitive contains)
       const matchesSearch =
         !q ||
         [
@@ -102,7 +112,7 @@ export default function ResourceFinder() {
           (r as any).servicesIndividualsRaw,
         ]
           .filter(Boolean)
-          .some((v) => normalize(String(v)).includes(q));
+          .some((v) => normalizeSearch(String(v)).includes(q));
 
       if (!matchesSearch) return false;
 
@@ -148,10 +158,12 @@ export default function ResourceFinder() {
   return (
     <div className="w-full py-6">
       {/* Filters */}
-      <div className="flex flex-col gap-4 border-t border-[#3B75A9] pt-6">
+      <div className="flex flex-col gap-4 border-t border-gray-400 pt-6 bg-gray-100">
+        <p>Lorem ipsum, dolor sit amet consectetur adipisicing elit. Autem dolor error molestiae suscipit sint corrupti eos eligendi aperiam sequi repellat?</p>
+
         {/* Search */}
         <div className="w-full">
-          <p className="my-2 font-semibold text-lg">Search</p>
+          <p className="my-2 font-semibold text-lg">What are you looking for?</p>
           <div className="relative">
             <span className="absolute inset-y-0 left-2 flex items-center">
               <MagnifyingGlassIcon className="h-6 w-6 text-black" />
@@ -159,7 +171,7 @@ export default function ResourceFinder() {
             <input
               type="text"
               placeholder="Search for resources"
-              className="w-full bg-white border border-[#3B75A9] rounded-full pl-10 pr-10 py-2 text-left text-black"
+              className="w-full bg-white border border-[#3B75A9] rounded-sm pl-10 pr-10 py-2 text-left text-black"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -177,28 +189,24 @@ export default function ResourceFinder() {
 
         {/* County dropdown */}
         <div className="w-full">
-          <p className="my-2 font-semibold text-lg">County</p>
+          <p className="my-2 font-semibold text-lg">Where are you looking?</p>
           <select
-            className="w-full bg-white border border-[#3B75A9] rounded-full px-4 py-2 text-black"
+            className="w-full bg-white border border-[#3B75A9] rounded-sm px-4 py-2 text-black"
             value={selectedCounty}
             onChange={(e) => setSelectedCounty((e.target.value as County) || "")}
           >
-            <option value="">All counties</option>
+            <option value="">Any county</option>
             {COUNTIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
           </select>
-          <p className="mt-2 text-xs text-gray-600">
-            (Source field: <span className="font-mono">{CSV_FIELDS.counties}</span>)
-          </p>
         </div>
-
-        {/* Services checkbox-buttons */}
-        <div className="border-b border-[#3B75A9] pt-2 pb-6">
+        {/* Services checkboxes */}
+        <div className="border-b border-gray-400 pt-2 pb-6">
           <div className="flex items-center justify-between gap-4">
-            <p className="my-2 font-semibold text-lg">Services</p>
+            <p className="my-2 font-semibold text-lg">Type of service (you can select multiple services)</p>
             <button
               className="text-sm underline text-[#1E79C8] hover:text-[#0E3052]"
               onClick={clearAllFilters}
@@ -207,31 +215,34 @@ export default function ResourceFinder() {
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {SERVICES.map((svc) => {
-              const selected = selectedServices.includes(svc);
+              const checked = selectedServices.includes(svc);
+
               return (
-                <button
+                <label
                   key={svc}
-                  aria-pressed={selected}
-                  onClick={() => toggleService(svc)}
-                  className={[
-                    "px-5 py-2 rounded-full transition-colors border text-sm font-semibold",
-                    selected
-                      ? "bg-[#1E79C8] text-white border-white"
-                      : "bg-[#EEF7FF] text-[#092940] border-[#3B75A9] hover:bg-[#3892E1] hover:text-white",
-                  ].join(" ")}
+                  className={`flex items-start gap-3 rounded-md border px-3 py-2 cursor-pointer transition-colors
+                    ${
+                      checked
+                        ? "bg-gray-700 border-gray-700 text-white"
+                        : "bg-white border-gray-300 text-gray-900 hover:bg-gray-50"
+                    }
+                  `}
                 >
-                  {svc}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleService(svc)}
+                    className="mt-1 h-4 w-4 accent-gray-700"
+                  />
+                  <span className="text-sm leading-snug">{svc}</span>
+                </label>
               );
             })}
           </div>
-
-          <p className="mt-2 text-xs text-gray-600">
-            (Source field: <span className="font-mono">{CSV_FIELDS.services}</span>)
-          </p>
         </div>
+
       </div>
 
       {/* Summary */}
@@ -244,10 +255,16 @@ export default function ResourceFinder() {
         </p>
       </div>
 
-      {/* 3-col grid (3 rows max due to pagination) */}
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+      {/* Grid w/ card formatting (matches your example) */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         {pageResources.map((r) => (
-          <ResourceCard key={r.id} resource={r} />
+          <div key={r.id} className="h-full">
+            <div className="h-full rounded-sm">
+              <div className="h-full bg-gray-50 p-6">
+                <ResourceCard resource={r} />
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 

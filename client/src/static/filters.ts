@@ -12,22 +12,81 @@ export const CSV_FIELDS = {
  * Replace these with your exact county/service values.
  */
 export const COUNTIES = [
-  // Example — replace with your full list
   "Alameda",
+  "Alpine",
+  "Amador",
+  "Butte",
+  "Calaveras",
+  "Colusa",
   "Contra Costa",
+  "Del Norte",
+  "El Dorado",
+  "Fresno",
+  "Glenn",
+  "Humboldt",
+  "Imperial",
+  "Inyo",
+  "Kern",
+  "Kings",
+  "Lake",
+  "Lassen",
+  "Los Angeles",
+  "Madera",
+  "Marin",
+  "Mariposa",
+  "Mendocino",
+  "Merced",
+  "Modoc",
+  "Mono",
+  "Monterey",
+  "Napa",
+  "Nevada",
+  "Orange",
+  "Placer",
+  "Plumas",
+  "Riverside",
+  "Sacramento",
+  "San Benito",
+  "San Bernardino",
+  "San Diego",
   "San Francisco",
+  "San Joaquin",
+  "San Luis Obispo",
   "San Mateo",
+  "Santa Barbara",
   "Santa Clara",
+  "Santa Cruz",
+  "Shasta",
+  "Sierra",
+  "Siskiyou",
+  "Solano",
+  "Sonoma",
+  "Stanislaus",
+  "Sutter",
+  "Tehama",
+  "Trinity",
+  "Tulare",
+  "Tuolumne",
+  "Ventura",
+  "Yolo",
+  "Yuba",
 ] as const;
 
+
 export const SERVICES = [
-  // Example — replace with your full list
-  "Devices",
-  "Internet",
-  "Digital Skills",
-  "Tech Support",
-  "Accessibility",
+  "Locating Low-Cost Internet Service Programs",
+  "Enrollment Assistance in Low-Cost Internet",
+  "Digital Navigation (in-person or virtual/call center)",
+  "Digital Literacy & Skills Training",
+  "Technical Support",
+  "Free/Low-Cost Devices",
+  "Free/Low-Cost Hotspots",
+  "Public Wi-Fi",
+  "Computer Center(s)",
+  "Online Educational Resources",
+  "Workforce Development Resources",
 ] as const;
+
 
 export type County = (typeof COUNTIES)[number];
 export type Service = (typeof SERVICES)[number];
@@ -41,4 +100,11 @@ export function splitCommaList(raw?: string): string[] {
     .split(/[,;\n|]+/g)
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+export function normalizeValue(v: string): string {
+  return v
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { MapPinIcon, BookmarkIcon, LinkIcon } from "@heroicons/react/24/outline";
+import { GlobeAltIcon } from "@heroicons/react/24/outline";
+import { MapPinIcon, WrenchIcon } from "@heroicons/react/24/solid";
 import type { Resource } from "../types/resourceTypes";
 
 function formatWebsite(url?: string) {
@@ -28,16 +29,16 @@ export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => 
   const websiteHref = useMemo(() => formatWebsite(resource.website), [resource.website]);
 
   return (
-    <div className="flex flex-col border-b border-[#3B75A9] transition-all ease-in-out duration-300">
+    <div className="flex flex-col transition-all ease-in-out duration-300">
       <div className="text-black py-2">
-        <h2 className="mt-1 font-bold text-md">
+        <h2 className="mt-1 text-lg text-semibold">
           {resource.name || "Untitled organization"}
         </h2>
       </div>
 
       {/* Address */}
       {address && (
-        <div className="flex items-center text-sm py-2 text-[#0E3052]">
+        <div className="flex items-center text-md font-light py-2">
           <MapPinIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
           <div className="flex-grow min-w-0 whitespace-normal break-words">
             {address}
@@ -47,8 +48,8 @@ export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => 
 
       {/* Type */}
       {resource.orgType && (
-        <div className="flex items-center text-sm py-2 text-[#0E3052]">
-          <BookmarkIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
+        <div className="flex items-center text-md font-light py-2">
+          <WrenchIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
           <div className="flex-grow min-w-0 whitespace-normal break-words">
             {resource.orgType}
           </div>
@@ -57,13 +58,13 @@ export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => 
 
       {/* Website */}
       {websiteHref && (
-        <div className="flex items-center text-sm py-2 text-[#0E3052]">
-          <LinkIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
+        <div className="flex items-center text-md font-light py-2">
+          <GlobeAltIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
           <a
             href={websiteHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="md:hover:text-[#1E79C8] transition-colors ease-in-out duration-300 flex-grow min-w-0 whitespace-normal break-words"
+            className="md:hover:text-[#1E79C8] transition-colors ease-in-out duration-300 flex-grow min-w-0 whitespace-normal break-words underline"
           >
             {resource.website}
           </a>
@@ -74,9 +75,9 @@ export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => 
         <button
           aria-label={`Learn more about ${resource.name}`}
           onClick={() => setShowMore((v) => !v)}
-          className="border border-[#1E79C8] text-[#1E79C8] hover:bg-[#3892E1] hover:text-white text-sm cursor-pointer px-12 py-2 rounded-full transition-colors duration-300 flex items-center justify-center gap-2 font-semibold"
+          className="inline-flex items-center justify-center px-6 py-2 rounded-md bg-[#066b99] text-white font-semibold text-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 transition-colors duration-200"
         >
-          {showMore ? "Collapse" : "Learn More"}
+          {showMore ? "Collapse" : "Learn more"}
         </button>
 
         {showMore && (
