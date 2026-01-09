@@ -1,3 +1,4 @@
+// src/components/ResourceCard.tsx
 import React, { useMemo, useState } from "react";
 import { GlobeAltIcon } from "@heroicons/react/24/outline";
 import { MapPinIcon, WrenchIcon } from "@heroicons/react/24/solid";
@@ -13,7 +14,17 @@ function formatWebsite(url?: string) {
   return trimmed;
 }
 
-export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => {
+type Props = {
+  resource: Resource;
+  servicesToShow?: string[];
+  servicesLabel?: string;
+};
+
+export const ResourceCard: React.FC<Props> = ({
+  resource,
+  servicesToShow,
+  servicesLabel = "Services",
+}) => {
   const [showMore, setShowMore] = useState(false);
 
   const address = useMemo(() => {
@@ -26,7 +37,22 @@ export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => 
     return parts.join(", ");
   }, [resource.addressLine1, resource.city, resource.state, resource.zip]);
 
-  const websiteHref = useMemo(() => formatWebsite(resource.website), [resource.website]);
+  const websiteHref = useMemo(
+    () => formatWebsite(resource.website),
+    [resource.website]
+  );
+
+  const fallbackServicesText = useMemo(() => {
+    const s = resource.servicesIndividuals;
+    return s?.trim() ? s.trim() : "";
+  }, [resource.servicesIndividuals]);
+
+  const servicesText = useMemo(() => {
+    if (servicesToShow && servicesToShow.length > 0) {
+      return servicesToShow.join(", ");
+    }
+    return fallbackServicesText;
+  }, [servicesToShow, fallbackServicesText]);
 
   return (
     <div className="flex flex-col transition-all ease-in-out duration-300">
@@ -82,21 +108,25 @@ export const ResourceCard: React.FC<{ resource: Resource }> = ({ resource }) => 
 
         {showMore && (
           <div className="my-4 text-md">
-            {resource.servicesIndividuals && (
+            {/* Services */}
+            {servicesText && (
               <div className="my-4">
-                <p className="my-2 font-semibold">Services</p>
-                <p className="whitespace-normal break-words">
-                  {resource.servicesIndividuals}
-                </p>
+                <p className="my-2 font-semibold">{servicesLabel}</p>
+                <p className="whitespace-normal break-words">{servicesText}</p>
               </div>
             )}
 
-            {(resource.contactName || resource.contactEmail || resource.phone || resource.contactTitle) && (
+            {(resource.contactName ||
+              resource.contactEmail ||
+              resource.phone ||
+              resource.contactTitle) && (
               <div className="my-4">
                 <p className="my-2 font-semibold">Contact Information</p>
+
                 {resource.contactName && (
                   <p className="whitespace-normal break-words">{resource.contactName}</p>
                 )}
+
                 {resource.contactTitle && (
                   <p className="whitespace-normal break-words">{resource.contactTitle}</p>
                 )}

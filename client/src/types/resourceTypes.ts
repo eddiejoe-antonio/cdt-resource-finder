@@ -1,3 +1,4 @@
+// src/types/resourceTypes.ts
 export type Resource = {
   id: string;
   name: string;
@@ -17,8 +18,13 @@ export type Resource = {
   orgType?: string;
   serviceArea?: string;
 
+  // Existing display field you already use in ResourceCard
   servicesIndividuals?: string;
+
+  // ✅ Add these (so ResourceFinder can be strict-typed, no any)
   countiesServedRaw?: string;
   servicesIndividualsRaw?: string;
 
+  // ✅ Q12 (org-mode)
+  servicesOrganizationsRaw?: string;
 };

@@ -1,6 +1,7 @@
+// src/utils/fetchResources.ts
 import Papa from "papaparse";
 import type { Resource } from "../types/resourceTypes";
-import { CSV_FIELDS } from "../static/filters"; // ✅ NEW
+import { CSV_FIELDS } from "../static/filters";
 
 type Row = Record<string, unknown>;
 
@@ -12,10 +13,9 @@ function formatWebsite(url: string) {
   return url;
 }
 
-/**
- * Map a CSV row -> Resource
- * Update the column names here to match your CSV headers.
- */
+const Q12_PREFIX =
+  "12. Does your entity/organization provide any of the following supports or services to other organizations";
+
 function mapRowToResource(row: Row, index: number): Resource {
   const name = s(row["Name of Organization"] || row["name"]);
   const id = s(row["id"]) || `${index + 1}`;
@@ -36,14 +36,26 @@ function mapRowToResource(row: Row, index: number): Resource {
   const contactEmail = s(row["Business Email Address"] || row["contactEmail"]);
 
   const orgType = s(row["Type of Organization"] || row["orgType"]);
-  const serviceArea = s(row["5. What is your entity/organization's service area?"] || row["serviceArea"]);
+  const serviceArea = s(
+    row["5. What is your entity/organization's service area?"] || row["serviceArea"]
+  );
 
-  // ✅ Q4 services (exact header)
-  const servicesIndividualsRaw = s(row[CSV_FIELDS.services] || row["servicesIndividuals"]);
-  const servicesIndividuals = servicesIndividualsRaw; // keep existing field for display
+  // Q4
+  const servicesIndividualsRaw = s(row[CSV_FIELDS.services] || row["servicesIndividualsRaw"]);
+  const servicesIndividuals = servicesIndividualsRaw;
 
-  // ✅ Q6 counties (exact header)
+  // Q6
   const countiesServedRaw = s(row[CSV_FIELDS.counties] || row["countiesServedRaw"]);
+
+  // Q12 -> mapped fields for org-mode
+  const q12Key =
+    Object.keys(row).find((k) => typeof k === "string" && k.startsWith(Q12_PREFIX)) ?? null;
+
+  const servicesOrganizationsRaw = s(
+    (q12Key ? row[q12Key] : undefined) ||
+      row["servicesOrganizationsRaw"] ||
+      row["servicesOrganizations"]
+  );
 
   return {
     id,
@@ -64,12 +76,13 @@ function mapRowToResource(row: Row, index: number): Resource {
     orgType: orgType || undefined,
     serviceArea: serviceArea || undefined,
 
-    // existing UI display field
     servicesIndividuals: servicesIndividuals || undefined,
 
-    // ✅ NEW fields used for filtering (comma-delimited strings)
     countiesServedRaw: countiesServedRaw || undefined,
     servicesIndividualsRaw: servicesIndividualsRaw || undefined,
+
+    // IMPORTANT: ensure your Resource type includes this field
+    servicesOrganizationsRaw: servicesOrganizationsRaw || undefined,
   };
 }
 
