@@ -36,18 +36,16 @@ function mapRowToResource(row: Row, index: number): Resource {
   const contactEmail = s(row["Business Email Address"] || row["contactEmail"]);
 
   const orgType = s(row["Type of Organization"] || row["orgType"]);
-  const serviceArea = s(
-    row["5. What is your entity/organization's service area?"] || row["serviceArea"]
-  );
+  const serviceArea = s(row["5. What is your entity/organization's service area?"] || row["serviceArea"]);
 
-  // Q4
+  // Q4 services
   const servicesIndividualsRaw = s(row[CSV_FIELDS.services] || row["servicesIndividualsRaw"]);
   const servicesIndividuals = servicesIndividualsRaw;
 
-  // Q6
+  // Q6 counties
   const countiesServedRaw = s(row[CSV_FIELDS.counties] || row["countiesServedRaw"]);
 
-  // Q12 -> mapped fields for org-mode
+  // Q12 org services (prefix match)
   const q12Key =
     Object.keys(row).find((k) => typeof k === "string" && k.startsWith(Q12_PREFIX)) ?? null;
 
@@ -81,7 +79,6 @@ function mapRowToResource(row: Row, index: number): Resource {
     countiesServedRaw: countiesServedRaw || undefined,
     servicesIndividualsRaw: servicesIndividualsRaw || undefined,
 
-    // IMPORTANT: ensure your Resource type includes this field
     servicesOrganizationsRaw: servicesOrganizationsRaw || undefined,
   };
 }
@@ -103,13 +100,13 @@ export async function fetchResourcesLocal(): Promise<Resource[]> {
     console.warn("CSV parse warnings:", parsed.errors);
   }
 
-  const rows = (parsed.data ?? []).filter(Boolean);
+  const rows: Row[] = (parsed.data ?? []).filter((x): x is Row => Boolean(x));
 
-  const resources = rows
-    .map(mapRowToResource)
-    .filter((r) => r.name && r.name.trim().length > 0);
+  const resources: Resource[] = rows
+    .map((row, idx) => mapRowToResource(row, idx))
+    .filter((r: Resource) => Boolean(r.name && r.name.trim().length > 0));
 
-  resources.sort((a, b) => a.name.localeCompare(b.name));
+  resources.sort((a: Resource, b: Resource) => a.name.localeCompare(b.name));
 
   return resources;
 }
