@@ -1,6 +1,4 @@
 // src/components/Pagination.tsx
-import React from "react";
-
 export default function Pagination(props: {
   currentPage: number;
   totalPages: number;
