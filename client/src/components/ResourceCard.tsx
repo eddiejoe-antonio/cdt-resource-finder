@@ -58,7 +58,7 @@ export const ResourceCard: React.FC<Props> = ({
       {/* Make the card-body a flex column and fill height */}
       <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border d-flex flex-column h-100">
         <div>
-          <h4 className="h4 m-0">{resource.name || "Untitled organization"}</h4>
+          <h5 className="h5 m-0">{resource.name || "Untitled organization"}</h5>
 
           <ul className="list-unstyled m-t-md m-b-0">
             {address && (
@@ -68,7 +68,7 @@ export const ResourceCard: React.FC<Props> = ({
                   aria-hidden="true"
                   style={iconStyle}
                 />
-                <span>{address}</span>
+                <span className="text-normal">{address}</span>
               </li>
             )}
 

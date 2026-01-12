@@ -80,11 +80,6 @@ export default function ResourceFinder() {
     setCurrentPage(1);
   };
 
-  const clearSearch = () => {
-    setSearchQuery("");
-    setCurrentPage(1);
-  };
-
   const onCountyChange = (next: County | "") => {
     setSelectedCounty(next);
     setCurrentPage(1);
@@ -296,20 +291,21 @@ export default function ResourceFinder() {
                   What are you looking for?
                 </label>
 
-                <div className="p-0">
-                  <form
-                    id="Search"
-                    className="pos-rel text-normal"
-                    onSubmit={(e) => e.preventDefault()}
-                    onReset={(e) => {
-                      e.preventDefault();
-                      clearSearch();
+                <div className="pos-rel text-normal">
+                  <span className="sr-only" id="SearchInput">
+                    Search resources
+                  </span>
+
+                  {/* Wrapper ensures input + button match height */}
+                  <div
+                    className="d-flex"
+                    style={{ alignItems: "stretch" }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault(); // prevents any form submit / refresh
+                      }
                     }}
                   >
-                    <span className="sr-only" id="SearchInput">
-                      Search resources
-                    </span>
-
                     <input
                       id="search"
                       type="search"
@@ -319,28 +315,37 @@ export default function ResourceFinder() {
                       className="search-textfield font-normal"
                       value={searchQuery}
                       onChange={(e) => onSearchChange(e.target.value)}
+                      style={{
+                        flex: 1,
+                        height: "44px",
+                        minHeight: "44px",
+                      }}
                     />
 
                     <button
-                      type="submit"
+                      type="button"
                       className="gsc-search-button bg-gray-600"
-                      aria-label="Submit search"
+                      aria-label="Search"
+                      onClick={() => {
+                        // No-op: search is live as user types
+                      }}
+                      style={{
+                        height: "44px",
+                        width: "44px",
+                        minWidth: "44px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
                     >
-                      <span className="ca-gov-icon-search" aria-hidden="true" />
-                      <span className="sr-only">Submit</span>
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
+                      />
+                      <span className="sr-only">Search</span>
                     </button>
-
-                    {searchQuery && (
-                      <div className="close-search-btn">
-                        <button
-                          className="close-search gsc-clear-button border-0 bg-transparent pos-rel"
-                          type="reset"
-                        >
-                          <span className="sr-only">Close</span>
-                        </button>
-                      </div>
-                    )}
-                  </form>
+                  </div>
                 </div>
               </div>
 
