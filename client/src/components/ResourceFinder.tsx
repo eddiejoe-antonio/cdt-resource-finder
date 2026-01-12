@@ -1,7 +1,5 @@
 // src/components/ResourceFinder.tsx
 import { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
-
 import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
@@ -292,33 +290,57 @@ export default function ResourceFinder() {
                 </select>
               </div>
 
-              {/* Search */}
+              {/* Search (CA template UI) */}
               <div className="col-md-4 m-b-sm">
                 <label className="form-label" htmlFor="search">
                   What are you looking for?
                 </label>
-                <div className="input-group">
-                  <span className="input-group-text" aria-hidden="true">
-                    <MagnifyingGlassIcon className="h-2 w-2" />
-                  </span>
-                  <input
-                    id="search"
-                    type="search"
-                    className="form-control"
-                    placeholder="Search for resources"
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                  />
-                  {searchQuery && (
+
+                <div className="p-0">
+                  <form
+                    id="Search"
+                    className="pos-rel text-normal"
+                    onSubmit={(e) => e.preventDefault()}
+                    onReset={(e) => {
+                      e.preventDefault();
+                      clearSearch();
+                    }}
+                  >
+                    <span className="sr-only" id="SearchInput">
+                      Search resources
+                    </span>
+
+                    <input
+                      id="search"
+                      type="search"
+                      name="q"
+                      aria-labelledby="SearchInput"
+                      placeholder="Search"
+                      className="search-textfield font-normal"
+                      value={searchQuery}
+                      onChange={(e) => onSearchChange(e.target.value)}
+                    />
+
                     <button
-                      type="button"
-                      className="btn btn-primary-outline"
-                      onClick={clearSearch}
-                      aria-label="Clear search"
+                      type="submit"
+                      className="gsc-search-button bg-gray-600"
+                      aria-label="Submit search"
                     >
-                      <XMarkIcon className="h-2 w-2" aria-hidden="true" />
+                      <span className="ca-gov-icon-search" aria-hidden="true" />
+                      <span className="sr-only">Submit</span>
                     </button>
-                  )}
+
+                    {searchQuery && (
+                      <div className="close-search-btn">
+                        <button
+                          className="close-search gsc-clear-button border-0 bg-transparent pos-rel"
+                          type="reset"
+                        >
+                          <span className="sr-only">Close</span>
+                        </button>
+                      </div>
+                    )}
+                  </form>
                 </div>
               </div>
 
@@ -350,13 +372,6 @@ export default function ResourceFinder() {
                   ? "Type of service (select all that apply)"
                   : "Type of support for organizations (select all that apply)"}
               </label>
-
-              <div className="d-flex justify-content-end">
-                <button type="button" className="btn btn-primary-outline" onClick={clearAllFilters}>
-                  Clear all
-                </button>
-              </div>
-
               <div className="row m-t-sm">
                 {(audience === "Resident" ? SERVICES : ORG_SERVICES).map((svc) => {
                   const checked =
@@ -375,7 +390,6 @@ export default function ResourceFinder() {
                         items-start
                         gap-x-4
                         cursor-pointer select-none
-                        py-3
                       "
                     >
                       <input
@@ -393,7 +407,7 @@ export default function ResourceFinder() {
                         "
                       />
 
-                      <span className="block min-w-0 text-base leading-snug">
+                      <span className="block min-w-0 text-base leading-snug font-normal">
                         {String(svc)}
                       </span>
                     </label>
@@ -408,10 +422,22 @@ export default function ResourceFinder() {
 
       {/* Results */}
       <section aria-label="Results">
-        <div className="d-flex justify-content-between align-items-center m-b-md">
-          {renderResultsSummary()}
-          {/* removed the top "Page X / Y" line */}
+        <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
+          {/* Results summary (allowed to wrap) */}
+          <div className="flex-grow-1">
+            {renderResultsSummary()}
+          </div>
+
+          {/* Clear all (never wraps) */}
+          <button
+            type="button"
+            className="btn btn-primary-outline flex-shrink-0 text-nowrap"
+            onClick={clearAllFilters}
+          >
+            Clear all
+          </button>
         </div>
+
 
         <div className="row">
           {pageResources.map((r) => {
