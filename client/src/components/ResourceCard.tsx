@@ -21,7 +21,7 @@ type Props = {
 export const ResourceCard: React.FC<Props> = ({
   resource,
   servicesToShow,
-  servicesLabel = "Services",
+  servicesLabel = "Service type",
 }) => {
   const [showMore, setShowMore] = useState(false);
   const detailsId = useId();
@@ -51,65 +51,62 @@ export const ResourceCard: React.FC<Props> = ({
     return fallbackServicesText;
   }, [servicesToShow, fallbackServicesText]);
 
-  // Font-icon sizing helper (CA template icons are icon-font based)
   const iconStyle: React.CSSProperties = { fontSize: "1.5rem", lineHeight: 1 };
 
   return (
     <article className="card h-100">
-      <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border">
-        <h4 className="h4 m-0">{resource.name || "Untitled organization"}</h4>
+      {/* Make the card-body a flex column and fill height */}
+      <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border d-flex flex-column h-100">
+        <div>
+          <h4 className="h4 m-0">{resource.name || "Untitled organization"}</h4>
 
-        <ul className="list-unstyled m-t-md m-b-0">
-          {/* Address */}
-          {address && (
-            <li className="d-flex align-items-start m-b-sm">
-              <span
-                className="ca-gov-icon-location m-r-sm flex-shrink-0"
-                aria-hidden="true"
-                style={iconStyle}
-              />
-              <span>{address}</span>
-            </li>
-          )}
+          <ul className="list-unstyled m-t-md m-b-0">
+            {address && (
+              <li className="d-flex align-items-start m-b-sm">
+                <span
+                  className="ca-gov-icon-location m-r-sm flex-shrink-0"
+                  aria-hidden="true"
+                  style={iconStyle}
+                />
+                <span>{address}</span>
+              </li>
+            )}
 
-          {/* Type */}
-          {resource.orgType && (
-            <li className="d-flex align-items-start m-b-sm">
-              <span
-                className="ca-gov-icon-tool m-r-sm flex-shrink-0"
-                aria-hidden="true"
-                style={iconStyle}
-              />
-              <span>{resource.orgType}</span>
-            </li>
-          )}
+            {resource.orgType && (
+              <li className="d-flex align-items-start m-b-sm">
+                <span
+                  className="ca-gov-icon-tool m-r-sm flex-shrink-0"
+                  aria-hidden="true"
+                  style={iconStyle}
+                />
+                <span className="text-normal">{resource.orgType}</span>
+              </li>
+            )}
 
-          {/* Website */}
-          {websiteHref && (
-            <li className="d-flex align-items-start">
-              <span
-                className="ca-gov-icon-globe m-r-sm flex-shrink-0"
-                aria-hidden="true"
-                style={iconStyle}
-              />
-              <a href={websiteHref} target="_blank" rel="noopener noreferrer">
-                {resource.website}
-              </a>
-            </li>
-          )}
-        </ul>
+              {websiteHref && (
+                <li className="d-flex align-items-start">
+                  <span
+                    className="ca-gov-icon-globe m-r-sm flex-shrink-0"
+                    aria-hidden="true"
+                    style={iconStyle}
+                  />
+                  <a
+                    href={websiteHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0"
+                    style={{
+                      overflowWrap: "anywhere",  // best for long URLs
+                      wordBreak: "break-word",   // fallback
+                    }}
+                  >
+                    {resource.website}
+                  </a>
+                </li>
+              )}
+          </ul>
 
-        <div className="m-t-md">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowMore((v) => !v)}
-            aria-expanded={showMore}
-            aria-controls={detailsId}
-          >
-            {showMore ? "Collapse" : "Learn more"}
-          </button>
-
+          {/* Details stay above the button */}
           {showMore && (
             <div id={detailsId} className="m-t-md">
               {servicesText && (
@@ -151,6 +148,19 @@ export const ResourceCard: React.FC<Props> = ({
               )}
             </div>
           )}
+        </div>
+
+        {/* Button pushed to the bottom of the card */}
+        <div className="m-t-md mt-auto">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setShowMore((v) => !v)}
+            aria-expanded={showMore}
+            aria-controls={detailsId}
+          >
+            {showMore ? "Show less" : "Learn more"}
+          </button>
         </div>
       </div>
     </article>

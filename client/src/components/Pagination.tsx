@@ -10,7 +10,7 @@ export default function Pagination({ currentPage, totalPages, onPageChange }: Pr
   const clamp = (p: number) => Math.max(1, Math.min(totalPages, p));
 
   return (
-    <nav aria-label="Pagination" className="m-t-lg d-flex justify-content-center align-items-center gap-2">
+    <nav aria-label="Pagination" className="m-t-md m-b-lg d-flex justify-content-center align-items-center gap-2">
       <button
         type="button"
         className="btn btn-primary-outline"

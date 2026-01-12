@@ -422,21 +422,21 @@ export default function ResourceFinder() {
 
       {/* Results */}
       <section aria-label="Results">
-        <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
-          {/* Results summary (allowed to wrap) */}
-          <div className="flex-grow-1">
-            {renderResultsSummary()}
-          </div>
-
-          {/* Clear all (never wraps) */}
-          <button
-            type="button"
-            className="btn btn-primary-outline flex-shrink-0 text-nowrap"
-            onClick={clearAllFilters}
-          >
-            Clear all
-          </button>
+      <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
+        {/* Results summary (allowed to wrap) */}
+        <div className="flex-grow-1">
+          {renderResultsSummary()}
         </div>
+
+        {/* Clear all (never wraps) */}
+        <button
+          type="button"
+          className="btn btn-primary-outline flex-shrink-0 text-nowrap"
+          onClick={clearAllFilters}
+        >
+          Clear all
+        </button>
+      </div>
 
 
         <div className="row">
@@ -452,7 +452,7 @@ export default function ResourceFinder() {
                 : "Supports / services for organizations";
 
             return (
-              <div key={r.id} className="col-md-4 m-b-md">
+              <div key={r.id} className="col-md-6 col-lg-4 m-b-md">
                 <ResourceCard
                   resource={r}
                   servicesToShow={servicesToShow}
