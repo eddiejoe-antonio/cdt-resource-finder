@@ -18,9 +18,6 @@ export default function App() {
 
   return (
     <div>
-      {/* <div className="bg-blue-900">
-        <h1 className="text-white">Digital Equity Resource Finder</h1>
-      </div> */}
       <ResourceFinder />
     </div>
   );

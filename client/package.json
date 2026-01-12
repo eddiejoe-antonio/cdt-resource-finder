@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cagovweb/state-template": "^6.5.1",
     "@heroicons/react": "^2.2.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
@@ -21,7 +22,7 @@
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^24.10.1",
     "@types/papaparse": "^5.5.2",
-    "@types/react": "^19.2.5",
+    "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",

@@ -1,7 +1,5 @@
 // src/components/ResourceCard.tsx
-import React, { useMemo, useState } from "react";
-import { GlobeAltIcon } from "@heroicons/react/24/outline";
-import { MapPinIcon, WrenchIcon } from "@heroicons/react/24/solid";
+import React, { useMemo, useState, useId } from "react";
 import type { Resource } from "../types/resourceTypes";
 
 function formatWebsite(url?: string) {
@@ -26,6 +24,7 @@ export const ResourceCard: React.FC<Props> = ({
   servicesLabel = "Services",
 }) => {
   const [showMore, setShowMore] = useState(false);
+  const detailsId = useId();
 
   const address = useMemo(() => {
     const parts = [
@@ -48,122 +47,112 @@ export const ResourceCard: React.FC<Props> = ({
   }, [resource.servicesIndividuals]);
 
   const servicesText = useMemo(() => {
-    if (servicesToShow && servicesToShow.length > 0) {
-      return servicesToShow.join(", ");
-    }
+    if (servicesToShow && servicesToShow.length > 0) return servicesToShow.join(", ");
     return fallbackServicesText;
   }, [servicesToShow, fallbackServicesText]);
 
+  // Font-icon sizing helper (CA template icons are icon-font based)
+  const iconStyle: React.CSSProperties = { fontSize: "1.5rem", lineHeight: 1 };
+
   return (
-    <div className="flex flex-col transition-all ease-in-out duration-300">
-      <div className="text-black py-2">
-        <h2 className="mt-1 text-lg text-semibold">
-          {resource.name || "Untitled organization"}
-        </h2>
-      </div>
+    <article className="card h-100">
+      <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border">
+        <h4 className="h4 m-0">{resource.name || "Untitled organization"}</h4>
 
-      {/* Address */}
-      {address && (
-        <div className="flex items-center text-md font-light py-2">
-          <MapPinIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
-          <div className="flex-grow min-w-0 whitespace-normal break-words">
-            {address}
-          </div>
-        </div>
-      )}
+        <ul className="list-unstyled m-t-md m-b-0">
+          {/* Address */}
+          {address && (
+            <li className="d-flex align-items-start m-b-sm">
+              <span
+                className="ca-gov-icon-location m-r-sm flex-shrink-0"
+                aria-hidden="true"
+                style={iconStyle}
+              />
+              <span>{address}</span>
+            </li>
+          )}
 
-      {/* Type */}
-      {resource.orgType && (
-        <div className="flex items-center text-md font-light py-2">
-          <WrenchIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
-          <div className="flex-grow min-w-0 whitespace-normal break-words">
-            {resource.orgType}
-          </div>
-        </div>
-      )}
+          {/* Type */}
+          {resource.orgType && (
+            <li className="d-flex align-items-start m-b-sm">
+              <span
+                className="ca-gov-icon-tool m-r-sm flex-shrink-0"
+                aria-hidden="true"
+                style={iconStyle}
+              />
+              <span>{resource.orgType}</span>
+            </li>
+          )}
 
-      {/* Website */}
-      {websiteHref && (
-        <div className="flex items-center text-md font-light py-2">
-          <GlobeAltIcon className="h-6 w-6 mr-2 flex-shrink-0 [stroke-width:2]" />
-          <a
-            href={websiteHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="md:hover:text-[#1E79C8] transition-colors ease-in-out duration-300 flex-grow min-w-0 whitespace-normal break-words underline"
+          {/* Website */}
+          {websiteHref && (
+            <li className="d-flex align-items-start">
+              <span
+                className="ca-gov-icon-globe m-r-sm flex-shrink-0"
+                aria-hidden="true"
+                style={iconStyle}
+              />
+              <a href={websiteHref} target="_blank" rel="noopener noreferrer">
+                {resource.website}
+              </a>
+            </li>
+          )}
+        </ul>
+
+        <div className="m-t-md">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setShowMore((v) => !v)}
+            aria-expanded={showMore}
+            aria-controls={detailsId}
           >
-            {resource.website}
-          </a>
+            {showMore ? "Collapse" : "Learn more"}
+          </button>
+
+          {showMore && (
+            <div id={detailsId} className="m-t-md">
+              {servicesText && (
+                <section className="m-b-md">
+                  <h5 className="h5">{servicesLabel}:</h5>
+                  <p className="m-0">{servicesText}</p>
+                </section>
+              )}
+
+              {(resource.contactName ||
+                resource.contactEmail ||
+                resource.phone ||
+                resource.contactTitle) && (
+                <section className="m-b-md">
+                  <h5 className="h5">Contact information</h5>
+
+                  {resource.contactName && <p className="m-0">{resource.contactName}</p>}
+                  {resource.contactTitle && <p className="m-0">{resource.contactTitle}</p>}
+
+                  {resource.contactEmail && (
+                    <p className="m-0">
+                      <a href={`mailto:${resource.contactEmail}`}>{resource.contactEmail}</a>
+                    </p>
+                  )}
+
+                  {resource.phone && (
+                    <p className="m-0">
+                      <a href={`tel:${resource.phone}`}>{resource.phone}</a>
+                    </p>
+                  )}
+                </section>
+              )}
+
+              {resource.serviceArea && (
+                <section>
+                  <h3 className="h4">Service area</h3>
+                  <p className="m-0">{resource.serviceArea}</p>
+                </section>
+              )}
+            </div>
+          )}
         </div>
-      )}
-
-      <div className="pt-4 pb-6">
-        <button
-          aria-label={`Learn more about ${resource.name}`}
-          onClick={() => setShowMore((v) => !v)}
-          className="inline-flex items-center justify-center px-6 py-2 rounded-md bg-[#066b99] text-white font-semibold text-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 transition-colors duration-200"
-        >
-          {showMore ? "Collapse" : "Learn more"}
-        </button>
-
-        {showMore && (
-          <div className="my-4 text-md">
-            {/* Services */}
-            {servicesText && (
-              <div className="my-4">
-                <p className="my-2 font-semibold">{servicesLabel}</p>
-                <p className="whitespace-normal break-words">{servicesText}</p>
-              </div>
-            )}
-
-            {(resource.contactName ||
-              resource.contactEmail ||
-              resource.phone ||
-              resource.contactTitle) && (
-              <div className="my-4">
-                <p className="my-2 font-semibold">Contact Information</p>
-
-                {resource.contactName && (
-                  <p className="whitespace-normal break-words">{resource.contactName}</p>
-                )}
-
-                {resource.contactTitle && (
-                  <p className="whitespace-normal break-words">{resource.contactTitle}</p>
-                )}
-
-                {resource.contactEmail && (
-                  <p className="whitespace-normal break-words">
-                    <a
-                      href={`mailto:${resource.contactEmail}`}
-                      className="md:hover:text-[#1E79C8] transition-colors ease-in-out duration-300"
-                    >
-                      {resource.contactEmail}
-                    </a>
-                  </p>
-                )}
-
-                {resource.phone && (
-                  <p className="whitespace-normal break-words">
-                    <a
-                      href={`tel:${resource.phone}`}
-                      className="md:hover:text-[#1E79C8] transition-colors ease-in-out duration-300"
-                    >
-                      {resource.phone}
-                    </a>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {resource.serviceArea && (
-              <div className="my-4">
-                <p className="my-2 font-semibold">Service Area</p>
-                <p className="whitespace-normal break-words">{resource.serviceArea}</p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
-    </div>
+    </article>
   );
 };

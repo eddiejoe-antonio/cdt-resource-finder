@@ -119,12 +119,8 @@ export default function ResourceFinder() {
 
   // ---- Index once for fast filtering ----
   const indexedResources = useMemo<IndexedResource[]>(() => {
-    const countyMap = new Map<string, County>(
-      COUNTIES.map((c) => [normalizeValue(c), c])
-    );
-    const serviceMap = new Map<string, Service>(
-      SERVICES.map((s) => [normalizeValue(s), s])
-    );
+    const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
+    const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
     const orgServiceMap = new Map<string, OrgService>(
       ORG_SERVICES.map((s) => [normalizeValue(s), s])
     );
@@ -151,7 +147,6 @@ export default function ResourceFinder() {
         ...r,
         countiesSet: new Set(counties),
         servicesSet: new Set(services),
-
         orgServicesRaw: orgRaw,
         orgServicesSet: new Set(orgList),
         hasOrgServices: orgList.length > 0,
@@ -223,51 +218,72 @@ export default function ResourceFinder() {
     return filtered.slice(start, start + ITEMS_PER_PAGE);
   }, [filtered, currentPage]);
 
+  // ----- Results summary with bolded active filters -----
+  const activeServices =
+    audience === "Resident" ? (selectedResidentServices as readonly string[]) : (selectedOrgServices as readonly string[]);
+
+  const renderResultsSummary = () => {
+    const parts: JSX.Element[] = [];
+
+    parts.push(
+      <span key="count">
+        Showing <strong>{filtered.length}</strong> results
+      </span>
+    );
+
+    if (selectedCounty) {
+      parts.push(
+        <span key="county">
+          {" "}for <strong>{selectedCounty} County</strong>
+        </span>
+      );
+    }
+
+    if (activeServices.length > 0) {
+      const serviceText =
+        activeServices.length === 1
+          ? activeServices[0]
+          : `${activeServices.slice(0, -1).join(", ")} or ${activeServices[activeServices.length - 1]}`;
+
+      parts.push(
+        <span key="services">
+          {" "}that help you <strong>{serviceText}</strong>
+        </span>
+      );
+    }
+
+    return <p className="m-0">{parts}</p>;
+  };
+
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
   return (
-    <div className="w-full">
-      {/* Header Section */}
-      <section className="w-full">
-          <div className="mx-auto max-w-7xl px-24 sm:px-8 lg:px-24 py-6">
-            <h1 className="
-              relative
-              text-white font-semibold text-4xl
-              bg-[#1f2576]
-              p-10
-              after:content-['']
-              after:block
-              after:h-1
-              after:w-1/2
-              after:bg-orange-500
-              after:mt-4
-            ">
-              Digital Equity Resource Finder
-            </h1>
-            <p className="py-8 px-10">The California Department of Technology has expanded its statewide inventory of digital equity related
-            entities, programs, and services regionally and locally. This database was compiled utilizing the Digital
-            Equity Ecosystem Mapping Tool survey and stakeholder participants during the development of the
-            State Digital Equity Plan.</p>
-          </div>
-      </section>
-      {/* Full-bleed filter section */}
-      <section className="w-full bg-gray-100 border-t border-b border-gray-400">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col gap-4">
-            <p>
-              Lorem ipsum, dolor sit amet consectetur adipisicing elit. Autem dolor
-              error molestiae suscipit sint corrupti eos eligendi aperiam sequi
-              repellat?
-            </p>
+    <div className="container">
+      {/* Header */}
+      <header className="m-y-lg">
+        <h1 className="h1">Digital Equity Resource Finder</h1>
+        <p className="m-t-md">
+          The California Department of Technology has expanded its statewide inventory of digital equity related
+          entities, programs, and services regionally and locally. This database was compiled utilizing the Digital
+          Equity Ecosystem Mapping Tool survey and stakeholder participants during the development of the
+          State Digital Equity Plan.
+        </p>
+      </header>
 
-            {/* Top row: Audience + Search + County */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Filters */}
+      <section className="m-b-lg" aria-label="Filters">
+        <form onSubmit={(e) => e.preventDefault()} className="card">
+          <div className="card-body bg-gray-50 border-b border-t border-gray-300">
+            <div className="row">
               {/* Audience */}
-              <div className="w-full">
-                <p className="my-2 font-semibold text-lg">I am a…</p>
+              <div className="col-md-4 m-b-sm">
+                <label className="form-label" htmlFor="audience">
+                  I am a…
+                </label>
                 <select
-                  className="w-full bg-white border border-[#3B75A9] rounded-sm px-4 py-2 text-black"
+                  id="audience"
+                  className="form-select"
                   value={audience}
                   onChange={(e) => onAudienceChange(e.target.value as Audience)}
                 >
@@ -277,36 +293,43 @@ export default function ResourceFinder() {
               </div>
 
               {/* Search */}
-              <div className="w-full">
-                <p className="my-2 font-semibold text-lg">What are you looking for?</p>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-2 flex items-center">
-                    <MagnifyingGlassIcon className="h-6 w-6 text-black" />
+              <div className="col-md-4 m-b-sm">
+                <label className="form-label" htmlFor="search">
+                  What are you looking for?
+                </label>
+                <div className="input-group">
+                  <span className="input-group-text" aria-hidden="true">
+                    <MagnifyingGlassIcon className="h-2 w-2" />
                   </span>
                   <input
-                    type="text"
+                    id="search"
+                    type="search"
+                    className="form-control"
                     placeholder="Search for resources"
-                    className="w-full bg-white border border-[#3B75A9] rounded-sm pl-10 pr-10 py-2 text-left text-black"
                     value={searchQuery}
                     onChange={(e) => onSearchChange(e.target.value)}
                   />
                   {searchQuery && (
                     <button
-                      className="absolute inset-y-0 right-2 flex items-center"
+                      type="button"
+                      className="btn btn-primary-outline"
                       onClick={clearSearch}
                       aria-label="Clear search"
                     >
-                      <XMarkIcon className="h-6 w-6 text-gray-400 hover:text-gray-600" />
+                      <XMarkIcon className="h-2 w-2" aria-hidden="true" />
                     </button>
                   )}
                 </div>
               </div>
 
               {/* County */}
-              <div className="w-full">
-                <p className="my-2 font-semibold text-lg">Where are you looking?</p>
+              <div className="col-md-4 m-b-sm">
+                <label className="form-label" htmlFor="county">
+                  Where are you looking?
+                </label>
                 <select
-                  className="w-full bg-white border border-[#3B75A9] rounded-sm px-4 py-2 text-black"
+                  id="county"
+                  className="form-select"
                   value={selectedCounty}
                   onChange={(e) => onCountyChange((e.target.value as County) || "")}
                 >
@@ -320,104 +343,105 @@ export default function ResourceFinder() {
               </div>
             </div>
 
-            {/* Services checkboxes */}
-            <div className="pt-2 pb-6">
-              <div className="flex items-center justify-between gap-4">
-                <p className="my-2 font-semibold text-lg">
-                  {audience === "Resident"
-                    ? "Type of service (you can select multiple services)"
-                    : "Type of support for organizations (you can select multiple)"}
-                </p>
-                <button
-                  className="text-sm underline text-[#1E79C8] hover:text-[#0E3052]"
-                  onClick={clearAllFilters}
-                >
+            {/* Services */}
+            <fieldset className="m-t-md">
+              <label className="">
+                {audience === "Resident"
+                  ? "Type of service (select all that apply)"
+                  : "Type of support for organizations (select all that apply)"}
+              </label>
+
+              <div className="d-flex justify-content-end">
+                <button type="button" className="btn btn-primary-outline" onClick={clearAllFilters}>
                   Clear all
                 </button>
               </div>
 
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {audience === "Resident"
-                  ? SERVICES.map((svc) => {
-                      const checked = selectedResidentServices.includes(svc);
-                      return (
-                        <label key={svc} className="flex items-start gap-3 px-3 py-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleResidentService(svc)}
-                            className="h-6 w-6 accent-gray-700"
-                          />
-                          <span className="text-md leading-snug">{svc}</span>
-                        </label>
-                      );
-                    })
-                  : ORG_SERVICES.map((svc) => {
-                      const checked = selectedOrgServices.includes(svc);
-                      return (
-                        <label key={svc} className="flex items-start gap-3 px-3 py-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleOrgService(svc)}
-                            className="h-6 w-6 accent-gray-700"
-                          />
-                          <span className="text-md leading-snug">{svc}</span>
-                        </label>
-                      );
-                    })}
+              <div className="row m-t-sm">
+                {(audience === "Resident" ? SERVICES : ORG_SERVICES).map((svc) => {
+                  const checked =
+                    audience === "Resident"
+                      ? selectedResidentServices.includes(svc as Service)
+                      : selectedOrgServices.includes(svc as OrgService);
+
+                  const id = `svc-${normalizeValue(String(svc))}`;
+
+                  return (
+                  <div key={String(svc)} className="col-sm-6 col-lg-3 m-b-md">
+                    <label
+                      htmlFor={id}
+                      className="
+                        !grid ![grid-template-columns:1.25rem_1fr]
+                        items-start
+                        gap-x-4
+                        cursor-pointer select-none
+                        py-3
+                      "
+                    >
+                      <input
+                        id={id}
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          if (audience === "Resident") toggleResidentService(svc as Service);
+                          else toggleOrgService(svc as OrgService);
+                        }}
+                        className="
+                          h-5 w-5 mt-0.5
+                          border border-gray-300
+                          accent-gray-700
+                        "
+                      />
+
+                      <span className="block min-w-0 text-base leading-snug">
+                        {String(svc)}
+                      </span>
+                    </label>
+                  </div>
+                  );
+                })}
               </div>
-            </div>
+            </fieldset>
           </div>
-        </div>
+        </form>
       </section>
 
       {/* Results */}
-      <section className="w-full">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <p className="text-lg text-[#0E3052]">
-              Showing <span className="font-semibold">{filtered.length}</span> results
-            </p>
-            <p className="text-sm text-gray-600">
-              Page {currentPage} / {totalPages}
-            </p>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-            {pageResources.map((r) => {
-              const servicesToShow =
-                audience === "Resident"
-                  ? Array.from(r.servicesSet)
-                  : Array.from(r.orgServicesSet);
-
-              const servicesLabel =
-                audience === "Resident"
-                  ? "Services"
-                  : "Supports / services for organizations";
-
-              return (
-                <div key={r.id} className="h-full">
-                  <div className="h-full rounded-sm">
-                    <div className="h-full bg-gray-50 p-6">
-                      <ResourceCard
-                        resource={r}
-                        servicesToShow={servicesToShow}
-                        servicesLabel={servicesLabel}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={(p) => setCurrentPage(p)}
-          />
+      <section aria-label="Results">
+        <div className="d-flex justify-content-between align-items-center m-b-md">
+          {renderResultsSummary()}
+          {/* removed the top "Page X / Y" line */}
         </div>
+
+        <div className="row">
+          {pageResources.map((r) => {
+            const servicesToShow =
+              audience === "Resident"
+                ? Array.from(r.servicesSet)
+                : Array.from(r.orgServicesSet);
+
+            const servicesLabel =
+              audience === "Resident"
+                ? "Services"
+                : "Supports / services for organizations";
+
+            return (
+              <div key={r.id} className="col-md-4 m-b-md">
+                <ResourceCard
+                  resource={r}
+                  servicesToShow={servicesToShow}
+                  servicesLabel={servicesLabel}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       </section>
     </div>
   );
