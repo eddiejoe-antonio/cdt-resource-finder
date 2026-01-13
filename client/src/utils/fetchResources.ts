@@ -84,7 +84,7 @@ function mapRowToResource(row: Row, index: number): Resource {
 }
 
 export async function fetchResourcesLocal(): Promise<Resource[]> {
-  const url = `/resources.csv?t=${Date.now()}`;
+  const url = `/converted.csv?t=${Date.now()}`;
 
   const res = await fetch(url, { headers: { "Content-Type": "text/plain" } });
   if (!res.ok) throw new Error(`Failed to fetch CSV (${res.status})`);
