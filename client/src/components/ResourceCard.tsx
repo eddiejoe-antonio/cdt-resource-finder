@@ -71,18 +71,18 @@ export const ResourceCard: React.FC<Props> = ({
                 <span className="text-normal">{address}</span>
               </li>
             )}
-
-            {resource.orgType && (
+            {servicesText && (
               <li className="d-flex align-items-start m-b-sm">
                 <span
                   className="ca-gov-icon-tool m-r-sm flex-shrink-0"
                   aria-hidden="true"
                   style={iconStyle}
                 />
-                <span className="text-normal">{resource.orgType}</span>
+                <span className="text-normal">
+                  <span>{servicesText}</span>
+                </span>
               </li>
             )}
-
               {websiteHref && (
                 <li className="d-flex align-items-start">
                   <span
