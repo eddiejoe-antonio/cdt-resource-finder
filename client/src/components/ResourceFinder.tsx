@@ -272,7 +272,7 @@ export default function ResourceFinder() {
   <p className="m-t-md px-4">
     Welcome to the Digital Equity Resource Finder – a tool designed to assist residents and organizations with finding essential digital inclusion programs and services in their communities. Originally based on input received during the Statewide Digital Equity Planning Grant, the database of resources was updated and the Resource Finder was refreshed in January 2026.
   </p>
-  <p className="m-t-md-">Use this tool to find resources like free/low cost devices, public Wi-Fi, or digital skills training.
+  <p className="m-t-md px-4">Use this tool to find resources like free/low cost devices, public Wi-Fi, or digital skills training.
 </p>
 </header>
 
