@@ -297,7 +297,25 @@ export default function ResourceFinder() {
                     <option value="Organization">Organization</option>
                   </select>
                 </div>
-
+                {/* County */}
+                <div className="col-12 col-lg-4 m-b-sm">
+                  <label className="form-label" htmlFor="county">
+                    Where are you looking?
+                  </label>
+                  <select
+                    id="county"
+                    className="form-select"
+                    value={selectedCounty}
+                    onChange={(e) => onCountyChange((e.target.value as County) || "")}
+                  >
+                    <option value="">Any county</option>
+                    {COUNTIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 {/* Search */}
                 <div className="col-12 col-lg-4 m-b-sm">
                   <label className="form-label" htmlFor="search">
@@ -357,26 +375,6 @@ export default function ResourceFinder() {
                       </button>
                     </div>
                   </div>
-                </div>
-
-                {/* County */}
-                <div className="col-12 col-lg-4 m-b-sm">
-                  <label className="form-label" htmlFor="county">
-                    Where are you looking?
-                  </label>
-                  <select
-                    id="county"
-                    className="form-select"
-                    value={selectedCounty}
-                    onChange={(e) => onCountyChange((e.target.value as County) || "")}
-                  >
-                    <option value="">Any county</option>
-                    {COUNTIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
             {/* Services */}
