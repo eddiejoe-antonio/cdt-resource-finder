@@ -27,7 +27,6 @@ const COL = {
   orgType: "Type of Organization",
   serviceArea: "5. What is your entity/organization's service area?",
 
-  // ✅ FIX #1: use the real Q4 header (no ellipsis)
   servicesIndividuals:
     "4. What digital inclusion service(s) does your entity/organization provide to individuals? Please select all that apply.",
 
@@ -41,6 +40,7 @@ const COL = {
   languages:
     "11. What language(s) does your entity/organization provide its services in? Please select all that apply.\u00A0",
 
+  // NOTE: This question is "Do you charge?" (we invert to get Free/Low Cost yes/no)
   freeLowCost: "13. Does your entity/organization charge for its services?",
 } as const;
 
@@ -53,6 +53,29 @@ function findKeyStartingWith(row: Row, prefix: string): string | null {
     if (typeof k === "string" && k.trim().startsWith(prefix)) return k;
   }
   return null;
+}
+
+/**
+ * Q13 is phrased as: "Does your entity/organization charge for its services?"
+ * Your UI wants "Free/Low Cost" shown as yes/no.
+ *
+ * Therefore we invert:
+ * - "No. Our services are offered free of cost."  => freeLowCost = "yes"
+ * - "Yes. We charge a fee..."                     => freeLowCost = "no"
+ */
+function normalizeFreeLowCostFromCharge(v: unknown): "Yes" | "No" | "" {
+  const txt = s(v).toLowerCase();
+  if (!txt) return "";
+
+  // Standard WPForms-style answers start with Yes./No.
+  if (txt.startsWith("no")) return "Yes";
+  if (txt.startsWith("yes")) return "No";
+
+  // Extra resilience if wording changes:
+  if (txt.includes("free")) return "Yes";
+  if (txt.includes("charge") || txt.includes("fee") || txt.includes("$")) return "No";
+
+  return "";
 }
 
 export function mapRowToResource(row: Row, index: number): Resource {
@@ -77,16 +100,21 @@ export function mapRowToResource(row: Row, index: number): Resource {
 
   // ✅ Q4: exact header first; fallback to "find the 4. ..." column if exports change
   const q4Key = COL.servicesIndividuals in row ? COL.servicesIndividuals : findKeyStartingWith(row, "4.");
-  const servicesIndividualsRaw = s((q4Key ? row[q4Key] : undefined) || row["servicesIndividualsRaw"]);
+  const servicesIndividualsRaw = s(
+    (q4Key ? row[q4Key] : undefined) || row["servicesIndividualsRaw"]
+  );
   const servicesIndividuals = servicesIndividualsRaw;
 
   const countiesServedRaw = s(row[COL.counties] || row["countiesServedRaw"]);
 
   const serviceDelivery = s(row[COL.serviceDelivery] || row["serviceDelivery"]);
   const languages = s(row[COL.languages] || row["languages"]);
-  const freeLowCost = s(row[COL.freeLowCost] || row["freeLowCost"]);
 
-  // ✅ FIX #2: Q12: do NOT match a long prefix with ellipses. Just find the "12." column.
+  // ✅ Q13 (charge?) inverted -> Free/Low Cost yes/no
+  const freeLowCostRaw = row[COL.freeLowCost] || row["freeLowCost"];
+  const freeLowCost = normalizeFreeLowCostFromCharge(freeLowCostRaw);
+
+  // ✅ Q12: do NOT match a long prefix with ellipses. Just find the "12." column.
   const q12Key = findKeyStartingWith(row, "12.");
   const servicesOrganizationsRaw = s(
     (q12Key ? row[q12Key] : undefined) ||
@@ -113,12 +141,14 @@ export function mapRowToResource(row: Row, index: number): Resource {
     orgType: orgType || undefined,
     serviceArea: serviceArea || undefined,
 
-    // cards can show this as fallback (and ResourceFinder uses servicesIndividualsRaw for filtering)
+    // Cards can show this as fallback (and ResourceFinder uses servicesIndividualsRaw for filtering)
     servicesIndividuals: servicesIndividuals || undefined,
 
-    // show-more
+    // Show-more
     serviceDelivery: serviceDelivery || undefined,
     languages: languages || undefined,
+
+    // ✅ now normalized to "yes" (free) / "no" (charges)
     freeLowCost: freeLowCost || undefined,
 
     // ResourceFinder filter inputs
