@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+.ca-underline {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  width: 50%;                 /* underline length */
+  background-color: var(--secondary-color); /* CA orange */
+}

@@ -20,8 +20,7 @@ type Props = {
 
 export const ResourceCard: React.FC<Props> = ({
   resource,
-  servicesToShow,
-  servicesLabel = "Service type",
+  servicesToShow
 }) => {
   const [showMore, setShowMore] = useState(false);
   const detailsId = useId();
@@ -55,10 +54,9 @@ export const ResourceCard: React.FC<Props> = ({
 
   return (
     <article className="card h-100">
-      {/* Make the card-body a flex column and fill height */}
       <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border d-flex flex-column h-100">
         <div>
-          <h5 className="h5 m-0">{resource.name || "Untitled organization"}</h5>
+          <h4 className="h4 m-0">{resource.name || "Untitled organization"}</h4>
 
           <ul className="list-unstyled m-t-md m-b-0">
             {address && (
@@ -71,6 +69,7 @@ export const ResourceCard: React.FC<Props> = ({
                 <span className="text-normal">{address}</span>
               </li>
             )}
+
             {servicesText && (
               <li className="d-flex align-items-start m-b-sm">
                 <span
@@ -83,74 +82,78 @@ export const ResourceCard: React.FC<Props> = ({
                 </span>
               </li>
             )}
-              {websiteHref && (
-                <li className="d-flex align-items-start">
-                  <span
-                    className="ca-gov-icon-globe m-r-sm flex-shrink-0"
-                    aria-hidden="true"
-                    style={iconStyle}
-                  />
-                  <a
-                    href={websiteHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="min-w-0"
-                    style={{
-                      overflowWrap: "anywhere",  // best for long URLs
-                      wordBreak: "break-word",   // fallback
-                    }}
-                  >
-                    {resource.website}
-                  </a>
-                </li>
-              )}
+
+            {websiteHref && (
+              <li className="d-flex align-items-start">
+                <span
+                  className="ca-gov-icon-globe m-r-sm flex-shrink-0"
+                  aria-hidden="true"
+                  style={iconStyle}
+                />
+                <a
+                  href={websiteHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-w-0"
+                  style={{
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {resource.website}
+                </a>
+              </li>
+            )}
           </ul>
+        {showMore && (
+          <div id={detailsId} className="m-t-md">
+            {resource.serviceArea && (
+              <p className="m-b-sm">
+                <span className="fw-bold">Service area:</span>{" "}
+                {resource.serviceArea}
+              </p>
+            )}
 
-          {/* Details stay above the button */}
-          {showMore && (
-            <div id={detailsId} className="m-t-md">
-              {servicesText && (
-                <section className="m-b-md">
-                  <h5 className="h5">{servicesLabel}:</h5>
-                  <p className="m-0">{servicesText}</p>
-                </section>
-              )}
+            {resource.serviceDelivery && (
+              <p className="m-b-sm">
+                <span className="fw-bold">In-person/virtual:</span>{" "}
+                {resource.serviceDelivery}
+              </p>
+            )}
 
-              {(resource.contactName ||
-                resource.contactEmail ||
-                resource.phone ||
-                resource.contactTitle) && (
-                <section className="m-b-md">
-                  <h5 className="h5">Contact information</h5>
+            {resource.languages && (
+              <p className="m-b-sm">
+                <span className="fw-bold">Language:</span>{" "}
+                {resource.languages}
+              </p>
+            )}
 
-                  {resource.contactName && <p className="m-0">{resource.contactName}</p>}
-                  {resource.contactTitle && <p className="m-0">{resource.contactTitle}</p>}
+            {resource.freeLowCost && (
+              <p className="m-b-sm">
+                <span className="fw-bold">Free/Low Cost:</span>{" "}
+                {resource.freeLowCost}
+              </p>
+            )}
 
-                  {resource.contactEmail && (
-                    <p className="m-0">
-                      <a href={`mailto:${resource.contactEmail}`}>{resource.contactEmail}</a>
-                    </p>
-                  )}
+            {resource.contactEmail && (
+              <p className="m-b-sm">
+                <span className="fw-bold">Email:</span>{" "}
+                <a href={`mailto:${resource.contactEmail}`}>
+                  {resource.contactEmail}
+                </a>
+              </p>
+            )}
 
-                  {resource.phone && (
-                    <p className="m-0">
-                      <a href={`tel:${resource.phone}`}>{resource.phone}</a>
-                    </p>
-                  )}
-                </section>
-              )}
-
-              {resource.serviceArea && (
-                <section>
-                  <h3 className="h4">Service area</h3>
-                  <p className="m-0">{resource.serviceArea}</p>
-                </section>
-              )}
-            </div>
-          )}
+            {resource.phone && (
+              <p className="m-b-sm">
+                <span className="fw-bold">Phone number:</span>{" "}
+                <a href={`tel:${resource.phone}`}>{resource.phone}</a>
+              </p>
+            )}
+          </div>
+        )}
         </div>
 
-        {/* Button pushed to the bottom of the card */}
         <div className="m-t-md mt-auto">
           <button
             type="button"

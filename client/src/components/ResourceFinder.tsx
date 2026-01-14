@@ -254,129 +254,140 @@ export default function ResourceFinder() {
   return (
     <div className="container">
       {/* Header */}
-      <header className="m-y-lg">
-        <h1 className="h1">Digital Equity Resource Finder</h1>
-        <p className="m-t-md">
-          The California Department of Technology has expanded its statewide inventory of digital equity related
-          entities, programs, and services regionally and locally. This database was compiled utilizing the Digital
-          Equity Ecosystem Mapping Tool survey and stakeholder participants during the development of the
-          State Digital Equity Plan.
-        </p>
-      </header>
+<header className="m-y-lg">
+  <h2 className="
+    h2 bg-[#1f2576] text-white py-8 px-4
+    relative
+    after:content-['']
+    after:absolute
+    after:left-4
+    after:bottom-0
+    after:h-1
+    after:w-1/2
+    after:bg-orange-500
+  ">
+    Digital Equity Resource Finder
+  </h2>
+
+  <p className="m-t-md px-4">
+    Welcome to the Digital Equity Resource Finder – a tool designed to assist residents and organizations with finding essential digital inclusion programs and services in their communities. Originally based on input received during the Statewide Digital Equity Planning Grant, the database of resources was updated and the Resource Finder was refreshed in January 2026.
+  </p>
+</header>
+
 
       {/* Filters */}
       <section className="m-b-lg" aria-label="Filters">
         <form onSubmit={(e) => e.preventDefault()} className="card">
           <div className="card-body bg-gray-50 border-b border-t border-gray-300">
-            <div className="row">
-              {/* Audience */}
-              <div className="col-md-4 m-b-sm">
-                <label className="form-label" htmlFor="audience">
-                  I am a…
-                </label>
-                <select
-                  id="audience"
-                  className="form-select"
-                  value={audience}
-                  onChange={(e) => onAudienceChange(e.target.value as Audience)}
-                >
-                  <option value="Resident">Resident</option>
-                  <option value="Organization">Organization</option>
-                </select>
-              </div>
-
-              {/* Search (CA template UI) */}
-              <div className="col-md-4 m-b-sm">
-                <label className="form-label" htmlFor="search">
-                  What are you looking for?
-                </label>
-
-                <div className="pos-rel text-normal">
-                  <span className="sr-only" id="SearchInput">
-                    Search resources
-                  </span>
-
-                  {/* Wrapper ensures input + button match height */}
-                  <div
-                    className="d-flex"
-                    style={{ alignItems: "stretch" }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault(); // prevents any form submit / refresh
-                      }
-                    }}
+              <div className="row">
+                {/* Audience */}
+                <div className="col-12 col-lg-4 m-b-sm">
+                  <label className="form-label" htmlFor="audience">
+                    I am a…
+                  </label>
+                  <select
+                    id="audience"
+                    className="form-select"
+                    value={audience}
+                    onChange={(e) => onAudienceChange(e.target.value as Audience)}
                   >
-                    <input
-                      id="search"
-                      type="search"
-                      name="q"
-                      aria-labelledby="SearchInput"
-                      placeholder="Search"
-                      className="search-textfield font-normal"
-                      value={searchQuery}
-                      onChange={(e) => onSearchChange(e.target.value)}
-                      style={{
-                        flex: 1,
-                        height: "44px",
-                        minHeight: "44px",
-                      }}
-                    />
+                    <option value="Resident">Resident</option>
+                    <option value="Organization">Organization</option>
+                  </select>
+                </div>
 
-                    <button
-                      type="button"
-                      className="gsc-search-button bg-gray-600"
-                      aria-label="Search"
-                      onClick={() => {
-                        // No-op: search is live as user types
-                      }}
+                {/* Search */}
+                <div className="col-12 col-lg-4 m-b-sm">
+                  <label className="form-label" htmlFor="search">
+                    What are you looking for?
+                  </label>
+
+                  <div className="pos-rel text-normal">
+                    <span className="sr-only" id="SearchInput">
+                      Search resources
+                    </span>
+
+                    <div
+                      className="d-flex w-100"
                       style={{
-                        height: "44px",
-                        width: "44px",
-                        minWidth: "44px",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        alignItems: "stretch",
+                        flexWrap: "nowrap",
+                        minWidth: 0,
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.preventDefault();
                       }}
                     >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
+                      <input
+                        id="search"
+                        type="search"
+                        name="q"
+                        aria-labelledby="SearchInput"
+                        placeholder="Search"
+                        className="search-textfield font-normal"
+                        value={searchQuery}
+                        onChange={(e) => onSearchChange(e.target.value)}
+                        style={{
+                          flex: "1 1 auto",
+                          minWidth: 0,
+                          height: "44px",
+                          minHeight: "44px",
+                        }}
                       />
-                      <span className="sr-only">Search</span>
-                    </button>
+
+                      <button
+                        type="button"
+                        className="gsc-search-button bg-gray-600"
+                        aria-label="Search"
+                        onClick={() => {}}
+                        style={{
+                          flex: "0 0 44px",
+                          height: "44px",
+                          width: "44px",
+                          minWidth: "44px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
+                        <span className="sr-only">Search</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* County */}
-              <div className="col-md-4 m-b-sm">
-                <label className="form-label" htmlFor="county">
-                  Where are you looking?
-                </label>
-                <select
-                  id="county"
-                  className="form-select"
-                  value={selectedCounty}
-                  onChange={(e) => onCountyChange((e.target.value as County) || "")}
-                >
-                  <option value="">Any county</option>
-                  {COUNTIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                {/* County */}
+                <div className="col-12 col-lg-4 m-b-sm">
+                  <label className="form-label" htmlFor="county">
+                    Where are you looking?
+                  </label>
+                  <select
+                    id="county"
+                    className="form-select"
+                    value={selectedCounty}
+                    onChange={(e) => onCountyChange((e.target.value as County) || "")}
+                  >
+                    <option value="">Any county</option>
+                    {COUNTIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
-
             {/* Services */}
             <fieldset className="m-t-md">
-              <label className="">
-                {audience === "Resident"
-                  ? "Type of service (select all that apply)"
-                  : "Type of support for organizations (select all that apply)"}
+              <label className="form-label">
+                <strong>
+                  {audience === "Resident"
+                    ? "Type of service"
+                    : "Type of support for organizations"}
+                </strong>
+                {" "} (select all that apply)
               </label>
+
               <div className="row m-t-sm">
                 {(audience === "Resident" ? SERVICES : ORG_SERVICES).map((svc) => {
                   const checked =

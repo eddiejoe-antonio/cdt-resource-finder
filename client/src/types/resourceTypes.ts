@@ -21,10 +21,15 @@ export type Resource = {
   // Existing display field you already use in ResourceCard
   servicesIndividuals?: string;
 
-  // ✅ Add these (so ResourceFinder can be strict-typed, no any)
+  // ✅ New "Show more" fields (from your CSV)
+  serviceDelivery?: string; // In-Person / Virtually / Virtually, In-Person
+  languages?: string;       // e.g., "English, Spanish"
+  freeLowCost?: string;     // are services free
+
+  // Existing fields you already added
   countiesServedRaw?: string;
   servicesIndividualsRaw?: string;
 
-  // ✅ Q12 (org-mode)
+  // Q12 org services
   servicesOrganizationsRaw?: string;
 };
