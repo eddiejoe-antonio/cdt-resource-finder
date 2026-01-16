@@ -8,28 +8,19 @@ import Pagination from "./Pagination";
 import {
   COUNTIES,
   SERVICES,
+  ORG_SERVICES,
   type County,
   type Service,
+  type OrgService,
   splitCommaList,
   normalizeValue,
+  labelForService,
+  labelForOrgService,
 } from "../static/filters";
 
 const ITEMS_PER_PAGE = 9;
 
 type Audience = "Resident" | "Organization";
-
-const ORG_SERVICES = [
-  "Digital equity grant writing",
-  "Organizational training",
-  "Train-the-trainer",
-  "Mutual aid (financial)",
-  "Partnership opportunities",
-  "Collective action",
-  "Information sharing",
-  "Other",
-] as const;
-
-type OrgService = (typeof ORG_SERVICES)[number];
 
 type IndexedResource = Resource & {
   countiesSet: Set<County>;
@@ -53,8 +44,12 @@ export default function ResourceFinder() {
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCounty, setSelectedCounty] = useState<County | "">("");
-  const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
-  const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
+  const [selectedResidentServices, setSelectedResidentServices] = useState<
+    Service[]
+  >([]);
+  const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>(
+    []
+  );
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -87,7 +82,9 @@ export default function ResourceFinder() {
 
   const toggleResidentService = (svc: Service) => {
     setSelectedResidentServices((prev) => {
-      const next = prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc];
+      const next = prev.includes(svc)
+        ? prev.filter((x) => x !== svc)
+        : [...prev, svc];
       return next;
     });
     setCurrentPage(1);
@@ -95,7 +92,9 @@ export default function ResourceFinder() {
 
   const toggleOrgService = (svc: OrgService) => {
     setSelectedOrgServices((prev) => {
-      const next = prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc];
+      const next = prev.includes(svc)
+        ? prev.filter((x) => x !== svc)
+        : [...prev, svc];
       return next;
     });
     setCurrentPage(1);
@@ -112,8 +111,12 @@ export default function ResourceFinder() {
 
   // ---- Index once for fast filtering ----
   const indexedResources = useMemo<IndexedResource[]>(() => {
-    const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
-    const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
+    const countyMap = new Map<string, County>(
+      COUNTIES.map((c) => [normalizeValue(c), c])
+    );
+    const serviceMap = new Map<string, Service>(
+      SERVICES.map((s) => [normalizeValue(s), s])
+    );
     const orgServiceMap = new Map<string, OrgService>(
       ORG_SERVICES.map((s) => [normalizeValue(s), s])
     );
@@ -213,7 +216,17 @@ export default function ResourceFinder() {
 
   // ----- Results summary with bolded active filters -----
   const activeServices =
-    audience === "Resident" ? (selectedResidentServices as readonly string[]) : (selectedOrgServices as readonly string[]);
+    audience === "Resident"
+      ? (selectedResidentServices as readonly string[])
+      : (selectedOrgServices as readonly string[]);
+
+  const activeServiceLabels = useMemo(() => {
+    return activeServices.map((s) =>
+      audience === "Resident"
+        ? labelForService(s as Service)
+        : labelForOrgService(s as OrgService)
+    );
+  }, [activeServices, audience]);
 
   const renderResultsSummary = () => {
     const parts: JSX.Element[] = [];
@@ -227,20 +240,24 @@ export default function ResourceFinder() {
     if (selectedCounty) {
       parts.push(
         <span key="county">
-          {" "}for <strong>{selectedCounty} County</strong>
+          {" "}
+          for <strong>{selectedCounty} County</strong>
         </span>
       );
     }
 
-    if (activeServices.length > 0) {
+    if (activeServiceLabels.length > 0) {
       const serviceText =
-        activeServices.length === 1
-          ? activeServices[0]
-          : `${activeServices.slice(0, -1).join(", ")} or ${activeServices[activeServices.length - 1]}`;
+        activeServiceLabels.length === 1
+          ? activeServiceLabels[0]
+          : `${activeServiceLabels.slice(0, -1).join(", ")} or ${
+              activeServiceLabels[activeServiceLabels.length - 1]
+            }`;
 
       parts.push(
         <span key="services">
-          {" "}that help you <strong>{serviceText}</strong>
+          {" "}
+          that help you <strong>{serviceText}</strong>
         </span>
       );
     }
@@ -254,129 +271,148 @@ export default function ResourceFinder() {
   return (
     <div className="container">
       {/* Header */}
-<header className="m-y-lg">
-  <h2 className="
-    h2 bg-[#1f2576] text-white py-8 px-4
-    relative
-    after:content-['']
-    after:absolute
-    after:left-4
-    after:bottom-0
-    after:h-1
-    after:w-1/2
-    after:bg-orange-500
-  ">
-    Digital Equity Resource Finder
-  </h2>
+      <header className="m-y-lg">
+        <h2
+          className="
+            h2 bg-[#1f2576] text-white py-8 px-4
+            relative
+            after:content-['']
+            after:absolute
+            after:left-4
+            after:bottom-0
+            after:h-1
+            after:w-1/2
+            after:bg-orange-500
+          "
+        >
+          Digital Equity Resource Finder
+        </h2>
 
-  <p className="m-t-md px-4">
-    Welcome to the Digital Equity Resource Finder – a tool designed to assist residents and organizations with finding essential digital inclusion programs and services in their communities. Originally based on input received during the Statewide Digital Equity Planning Grant, the database of resources was updated and the Resource Finder was refreshed in January 2026.
-  </p>
-  <p className="m-t-md px-4">Use this tool to find resources like free/low cost devices, public Wi-Fi, or digital skills training.
-</p>
-</header>
-
+        <p className="m-t-md px-4">
+          Welcome to the Digital Equity Resource Finder – a tool designed to
+          assist residents and organizations with finding essential digital
+          inclusion programs and services in their communities. Originally based
+          on input received during the Statewide Digital Equity Planning Grant,
+          the database of resources was updated and the Resource Finder was
+          refreshed in January 2026.
+        </p>
+        <p className="m-t-md px-4">
+          Use this tool to find resources like free/low cost devices, public
+          Wi-Fi, or digital skills training.
+        </p>
+      </header>
 
       {/* Filters */}
       <section className="m-b-lg" aria-label="Filters">
         <form onSubmit={(e) => e.preventDefault()} className="card">
           <div className="card-body bg-gray-50 border-b border-t border-gray-300">
-              <div className="row">
-                {/* Audience */}
-                <div className="col-12 col-lg-4 m-b-sm">
-                  <label className="form-label" htmlFor="audience">
-                    I am seeking resources for...
-                  </label>
-                  <select
-                    id="audience"
-                    className="form-select"
-                    value={audience}
-                    onChange={(e) => onAudienceChange(e.target.value as Audience)}
-                  >
-                    <option value="Resident">California residents</option>
-                    <option value="Organization">Organizations</option>
-                  </select>
-                </div>
-                {/* County */}
-                <div className="col-12 col-lg-4 m-b-sm">
-                  <label className="form-label" htmlFor="county">
-                    Located in
-                  </label>
-                  <select
-                    id="county"
-                    className="form-select"
-                    value={selectedCounty}
-                    onChange={(e) => onCountyChange((e.target.value as County) || "")}
-                  >
-                    <option value="">Any county</option>
-                    {COUNTIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c} County
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {/* Search */}
-                <div className="col-12 col-lg-4 m-b-sm">
-                  <label className="form-label" htmlFor="search">
-                    Related to
-                  </label>
+            <div className="row">
+              {/* Audience */}
+              <div className="col-12 col-lg-4 m-b-sm">
+                <label className="form-label" htmlFor="audience">
+                  I am seeking resources for...
+                </label>
+                <select
+                  id="audience"
+                  className="form-select"
+                  value={audience}
+                  onChange={(e) =>
+                    onAudienceChange(e.target.value as Audience)
+                  }
+                >
+                  <option value="Resident">California residents</option>
+                  <option value="Organization">Organizations</option>
+                </select>
+              </div>
 
-                  <div className="pos-rel text-normal">
-                    <span className="sr-only" id="SearchInput">
-                      Search resources
-                    </span>
+              {/* County */}
+              <div className="col-12 col-lg-4 m-b-sm">
+                <label className="form-label" htmlFor="county">
+                  Located in
+                </label>
+                <select
+                  id="county"
+                  className="form-select"
+                  value={selectedCounty}
+                  onChange={(e) =>
+                    onCountyChange((e.target.value as County) || "")
+                  }
+                >
+                  <option value="">Any county</option>
+                  {COUNTIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c} County
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                    <div
-                      className="d-flex w-100"
+              {/* Search */}
+              <div className="col-12 col-lg-4 m-b-sm">
+                <label className="form-label" htmlFor="search">
+                  Related to
+                </label>
+
+                <div className="pos-rel text-normal">
+                  <span className="sr-only" id="SearchInput">
+                    Search resources
+                  </span>
+
+                  <div
+                    className="d-flex w-100"
+                    style={{
+                      alignItems: "stretch",
+                      flexWrap: "nowrap",
+                      minWidth: 0,
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                  >
+                    <input
+                      id="search"
+                      type="search"
+                      name="q"
+                      aria-labelledby="SearchInput"
+                      placeholder="Search"
+                      className="search-textfield font-normal"
+                      value={searchQuery}
+                      onChange={(e) => onSearchChange(e.target.value)}
                       style={{
-                        alignItems: "stretch",
-                        flexWrap: "nowrap",
+                        flex: "1 1 auto",
                         minWidth: 0,
+                        height: "44px",
+                        minHeight: "44px",
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.preventDefault();
+                    />
+
+                    <button
+                      type="button"
+                      className="gsc-search-button bg-gray-600"
+                      aria-label="Search"
+                      onClick={() => {}}
+                      style={{
+                        flex: "0 0 44px",
+                        height: "44px",
+                        width: "44px",
+                        minWidth: "44px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      <input
-                        id="search"
-                        type="search"
-                        name="q"
-                        aria-labelledby="SearchInput"
-                        placeholder="Search"
-                        className="search-textfield font-normal"
-                        value={searchQuery}
-                        onChange={(e) => onSearchChange(e.target.value)}
-                        style={{
-                          flex: "1 1 auto",
-                          minWidth: 0,
-                          height: "44px",
-                          minHeight: "44px",
-                        }}
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
                       />
-
-                      <button
-                        type="button"
-                        className="gsc-search-button bg-gray-600"
-                        aria-label="Search"
-                        onClick={() => {}}
-                        style={{
-                          flex: "0 0 44px",
-                          height: "44px",
-                          width: "44px",
-                          minWidth: "44px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
-                        <span className="sr-only">Search</span>
-                      </button>
-                    </div>
+                      <span className="sr-only">Search</span>
+                    </button>
                   </div>
                 </div>
               </div>
+            </div>
+
             {/* Services */}
             <fieldset className="m-t-md">
               <label className="form-label">
@@ -384,52 +420,63 @@ export default function ResourceFinder() {
                   {audience === "Resident"
                     ? "Services that include"
                     : "Support that includes"}
-                </strong>
-                {" "} (select all that apply)
+                </strong>{" "}
+                (select all that apply)
               </label>
 
               <div className="row m-t-sm">
-                {(audience === "Resident" ? SERVICES : ORG_SERVICES).map((svc) => {
-                  const checked =
-                    audience === "Resident"
-                      ? selectedResidentServices.includes(svc as Service)
-                      : selectedOrgServices.includes(svc as OrgService);
+                {(audience === "Resident" ? SERVICES : ORG_SERVICES).map(
+                  (svc) => {
+                    const checked =
+                      audience === "Resident"
+                        ? selectedResidentServices.includes(svc as Service)
+                        : selectedOrgServices.includes(svc as OrgService);
 
-                  const id = `svc-${normalizeValue(String(svc))}`;
+                    const id = `svc-${normalizeValue(String(svc))}`;
 
-                  return (
-                  <div key={String(svc)} className="col-sm-6 col-lg-3 m-b-md">
-                    <label
-                      htmlFor={id}
-                      className="
-                        !grid ![grid-template-columns:1.25rem_1fr]
-                        items-start
-                        gap-x-4
-                        cursor-pointer select-none
-                      "
-                    >
-                      <input
-                        id={id}
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          if (audience === "Resident") toggleResidentService(svc as Service);
-                          else toggleOrgService(svc as OrgService);
-                        }}
-                        className="
-                          h-5 w-5 mt-0.5
-                          border border-gray-300
-                          accent-gray-700
-                        "
-                      />
+                    const displayLabel =
+                      audience === "Resident"
+                        ? labelForService(svc as Service)
+                        : labelForOrgService(svc as OrgService);
 
-                      <span className="block min-w-0 text-base leading-snug font-normal">
-                        {String(svc)}
-                      </span>
-                    </label>
-                  </div>
-                  );
-                })}
+                    return (
+                      <div
+                        key={String(svc)}
+                        className="col-sm-6 col-lg-3 m-b-md"
+                      >
+                        <label
+                          htmlFor={id}
+                          className="
+                            !grid ![grid-template-columns:1.25rem_1fr]
+                            items-start
+                            gap-x-4
+                            cursor-pointer select-none
+                          "
+                        >
+                          <input
+                            id={id}
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              if (audience === "Resident")
+                                toggleResidentService(svc as Service);
+                              else toggleOrgService(svc as OrgService);
+                            }}
+                            className="
+                              h-5 w-5 mt-0.5
+                              border border-gray-300
+                              accent-gray-700
+                            "
+                          />
+
+                          <span className="block min-w-0 text-base leading-snug font-normal">
+                            {displayLabel}
+                          </span>
+                        </label>
+                      </div>
+                    );
+                  }
+                )}
               </div>
             </fieldset>
           </div>
@@ -438,29 +485,24 @@ export default function ResourceFinder() {
 
       {/* Results */}
       <section aria-label="Results">
-      <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
-        {/* Results summary (allowed to wrap) */}
-        <div className="flex-grow-1">
-          {renderResultsSummary()}
+        <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
+          <div className="flex-grow-1">{renderResultsSummary()}</div>
+
+          <button
+            type="button"
+            className="btn btn-primary-outline flex-shrink-0 text-nowrap"
+            onClick={clearAllFilters}
+          >
+            Clear all
+          </button>
         </div>
-
-        {/* Clear all (never wraps) */}
-        <button
-          type="button"
-          className="btn btn-primary-outline flex-shrink-0 text-nowrap"
-          onClick={clearAllFilters}
-        >
-          Clear all
-        </button>
-      </div>
-
 
         <div className="row">
           {pageResources.map((r) => {
             const servicesToShow =
               audience === "Resident"
-                ? Array.from(r.servicesSet)
-                : Array.from(r.orgServicesSet);
+                ? Array.from(r.servicesSet).map((s) => labelForService(s))
+                : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
 
             const servicesLabel =
               audience === "Resident"

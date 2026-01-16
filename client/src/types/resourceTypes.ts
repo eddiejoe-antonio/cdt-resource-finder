@@ -23,8 +23,8 @@ export type Resource = {
 
   // ✅ New "Show more" fields (from your CSV)
   serviceDelivery?: string; // In-Person / Virtually / Virtually, In-Person
-  languages?: string;       // e.g., "English, Spanish"
-  freeLowCost?: string;     // are services free
+  languages?: string; // e.g., "English, Spanish"
+  freeLowCost?: string; // are services free
 
   // Existing fields you already added
   countiesServedRaw?: string;

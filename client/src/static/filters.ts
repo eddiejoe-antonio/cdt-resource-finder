@@ -7,10 +7,10 @@ export const CSV_FIELDS = {
     "4. What digital inclusion service(s) does your entity/organization provide to individuals? Please select all that apply.",
 } as const;
 
-/**
- * Static, finite lists (control order + labeling).
- * Replace these with your exact county/service values.
- */
+/* ======================================================
+   COUNTIES
+====================================================== */
+
 export const COUNTIES = [
   "Alameda",
   "Alpine",
@@ -72,6 +72,11 @@ export const COUNTIES = [
   "Yuba",
 ] as const;
 
+export type County = (typeof COUNTIES)[number];
+
+/* ======================================================
+   RESIDENT SERVICES (canonical values)
+====================================================== */
 
 export const SERVICES = [
   "Locating Low-Cost Internet Service Programs",
@@ -87,13 +92,62 @@ export const SERVICES = [
   "Workforce Development Resources",
 ] as const;
 
-
-export type County = (typeof COUNTIES)[number];
 export type Service = (typeof SERVICES)[number];
 
-/**
- * CSV is comma-delimited per your note. We'll also be tolerant of semicolons/newlines.
- */
+/* ======================================================
+   ORGANIZATION SERVICES (canonical values)
+====================================================== */
+
+export const ORG_SERVICES = [
+  "Digital equity grant writing",
+  "Organizational training",
+  "Train-the-trainer",
+  "Mutual aid (financial)",
+  "Partnership opportunities",
+  "Collective action",
+  "Information sharing",
+  "Other",
+] as const;
+
+export type OrgService = (typeof ORG_SERVICES)[number];
+
+/* ======================================================
+   DISPLAY LABELS (EDIT THESE)
+====================================================== */
+
+/** Resident-facing service labels */
+export const SERVICE_DISPLAY_LABELS: Record<Service, string> = {
+  "Locating Low-Cost Internet Service Programs": "Low-cost internet programs",
+  "Enrollment Assistance in Low-Cost Internet":
+    "Low-cost internet enrollment assistance",
+  "Digital Navigation (in-person or virtual/call center)":
+    "Digital navigation (in-person or virtual/call center)",
+  "Digital Literacy & Skills Training": "Digital skills training",
+  "Technical Support": "Technical support",
+  "Free/Low-Cost Devices": "Free or low-cost devices",
+  "Free/Low-Cost Hotspots": "Free or low-cost hotspots",
+  "Public Wi-Fi": "Public Wi-Fi",
+  "Computer Center(s)": "Computer centers",
+  "Online Educational Resources": "Online educational resources",
+  "Workforce Development Resources": "Workforce development",
+};
+
+/** Organization-facing service labels */
+export const ORG_SERVICE_DISPLAY_LABELS: Record<OrgService, string> = {
+  "Digital equity grant writing": "Digital equity grant writing",
+  "Organizational training": "Organizational training",
+  "Train-the-trainer": "Train-the-trainer programs",
+  "Mutual aid (financial)": "Mutual aid (financial)",
+  "Partnership opportunities": "Partnership opportunities",
+  "Collective action": "Collective action",
+  "Information sharing": "Information sharing",
+  "Other": "Other",
+};
+
+/* ======================================================
+   HELPERS
+====================================================== */
+
 export function splitCommaList(raw?: string): string[] {
   if (!raw) return [];
   return raw
@@ -103,8 +157,13 @@ export function splitCommaList(raw?: string): string[] {
 }
 
 export function normalizeValue(v: string): string {
-  return v
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return v.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+export function labelForService(svc: Service): string {
+  return SERVICE_DISPLAY_LABELS[svc] ?? svc;
+}
+
+export function labelForOrgService(svc: OrgService): string {
+  return ORG_SERVICE_DISPLAY_LABELS[svc] ?? svc;
 }

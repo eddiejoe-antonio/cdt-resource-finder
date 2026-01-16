@@ -20,7 +20,7 @@ type Props = {
 
 export const ResourceCard: React.FC<Props> = ({
   resource,
-  servicesToShow
+  servicesToShow,
 }) => {
   const [showMore, setShowMore] = useState(false);
   const detailsId = useId();
@@ -46,7 +46,8 @@ export const ResourceCard: React.FC<Props> = ({
   }, [resource.servicesIndividuals]);
 
   const servicesText = useMemo(() => {
-    if (servicesToShow && servicesToShow.length > 0) return servicesToShow.join(", ");
+    if (servicesToShow && servicesToShow.length > 0)
+      return servicesToShow.join(", ");
     return fallbackServicesText;
   }, [servicesToShow, fallbackServicesText]);
 
@@ -105,53 +106,53 @@ export const ResourceCard: React.FC<Props> = ({
               </li>
             )}
           </ul>
-        {showMore && (
-          <div id={detailsId} className="m-t-md">
-            {resource.serviceArea && (
-              <p className="m-b-sm">
-                <span className="fw-bold">Service area:</span>{" "}
-                {resource.serviceArea}
-              </p>
-            )}
 
-            {resource.serviceDelivery && (
-              <p className="m-b-sm">
-                <span className="fw-bold">In-person/virtual:</span>{" "}
-                {resource.serviceDelivery}
-              </p>
-            )}
+          {showMore && (
+            <div id={detailsId} className="m-t-md">
+              {resource.serviceArea && (
+                <p className="m-b-sm">
+                  <span className="fw-bold">Service area:</span>{" "}
+                  {resource.serviceArea}
+                </p>
+              )}
 
-            {resource.languages && (
-              <p className="m-b-sm">
-                <span className="fw-bold">Language:</span>{" "}
-                {resource.languages}
-              </p>
-            )}
+              {resource.serviceDelivery && (
+                <p className="m-b-sm">
+                  <span className="fw-bold">In-person/virtual:</span>{" "}
+                  {resource.serviceDelivery}
+                </p>
+              )}
 
-            {resource.freeLowCost && (
-              <p className="m-b-sm">
-                <span className="fw-bold">Free/Low Cost:</span>{" "}
-                {resource.freeLowCost}
-              </p>
-            )}
+              {resource.languages && (
+                <p className="m-b-sm">
+                  <span className="fw-bold">Language:</span> {resource.languages}
+                </p>
+              )}
 
-            {resource.contactEmail && (
-              <p className="m-b-sm">
-                <span className="fw-bold">Email:</span>{" "}
-                <a href={`mailto:${resource.contactEmail}`}>
-                  {resource.contactEmail}
-                </a>
-              </p>
-            )}
+              {resource.freeLowCost && (
+                <p className="m-b-sm">
+                  <span className="fw-bold">Free/Low Cost:</span>{" "}
+                  {resource.freeLowCost}
+                </p>
+              )}
 
-            {resource.phone && (
-              <p className="m-b-sm">
-                <span className="fw-bold">Phone number:</span>{" "}
-                <a href={`tel:${resource.phone}`}>{resource.phone}</a>
-              </p>
-            )}
-          </div>
-        )}
+              {resource.contactEmail && (
+                <p className="m-b-sm">
+                  <span className="fw-bold">Email:</span>{" "}
+                  <a href={`mailto:${resource.contactEmail}`}>
+                    {resource.contactEmail}
+                  </a>
+                </p>
+              )}
+
+              {resource.phone && (
+                <p className="m-b-sm">
+                  <span className="fw-bold">Phone number:</span>{" "}
+                  <a href={`tel:${resource.phone}`}>{resource.phone}</a>
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="m-t-md mt-auto">
