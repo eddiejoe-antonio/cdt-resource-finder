@@ -285,7 +285,7 @@ export default function ResourceFinder() {
                 {/* Audience */}
                 <div className="col-12 col-lg-4 m-b-sm">
                   <label className="form-label" htmlFor="audience">
-                    I am a…
+                    I am seeking resources for...
                   </label>
                   <select
                     id="audience"
@@ -293,14 +293,14 @@ export default function ResourceFinder() {
                     value={audience}
                     onChange={(e) => onAudienceChange(e.target.value as Audience)}
                   >
-                    <option value="Resident">Resident</option>
-                    <option value="Organization">Organization</option>
+                    <option value="Resident">California residents</option>
+                    <option value="Organization">Organizations</option>
                   </select>
                 </div>
                 {/* County */}
                 <div className="col-12 col-lg-4 m-b-sm">
                   <label className="form-label" htmlFor="county">
-                    Where are you looking?
+                    Located in
                   </label>
                   <select
                     id="county"
@@ -311,7 +311,7 @@ export default function ResourceFinder() {
                     <option value="">Any county</option>
                     {COUNTIES.map((c) => (
                       <option key={c} value={c}>
-                        {c}
+                        {c} County
                       </option>
                     ))}
                   </select>
@@ -319,7 +319,7 @@ export default function ResourceFinder() {
                 {/* Search */}
                 <div className="col-12 col-lg-4 m-b-sm">
                   <label className="form-label" htmlFor="search">
-                    What are you looking for?
+                    Related to
                   </label>
 
                   <div className="pos-rel text-normal">
@@ -382,8 +382,8 @@ export default function ResourceFinder() {
               <label className="form-label">
                 <strong>
                   {audience === "Resident"
-                    ? "Type of service"
-                    : "Type of support for organizations"}
+                    ? "Services that include"
+                    : "Support that includes"}
                 </strong>
                 {" "} (select all that apply)
               </label>
