@@ -117,31 +117,31 @@ export type OrgService = (typeof ORG_SERVICES)[number];
 
 /** Resident-facing service labels */
 export const SERVICE_DISPLAY_LABELS: Record<Service, string> = {
+    "Computer Center(s)": "Computer centers",
+  "Digital Navigation (in-person or virtual/call center)":
+    "Digital navigation (in-person or virtual/call center)",
+      "Digital Literacy & Skills Training": "Digital skills training",
+        "Free/Low-Cost Devices": "Free or low-cost devices",
+  "Free/Low-Cost Hotspots": "Free or low-cost hotspots",
   "Locating Low-Cost Internet Service Programs": "Low-cost internet programs",
   "Enrollment Assistance in Low-Cost Internet":
     "Low-cost internet enrollment assistance",
-  "Digital Navigation (in-person or virtual/call center)":
-    "Digital navigation (in-person or virtual/call center)",
-  "Digital Literacy & Skills Training": "Digital skills training",
+      "Online Educational Resources": "Online educational resources",
+      "Public Wi-Fi": "Public Wi-Fi",
   "Technical Support": "Technical support",
-  "Free/Low-Cost Devices": "Free or low-cost devices",
-  "Free/Low-Cost Hotspots": "Free or low-cost hotspots",
-  "Public Wi-Fi": "Public Wi-Fi",
-  "Computer Center(s)": "Computer centers",
-  "Online Educational Resources": "Online educational resources",
   "Workforce Development Resources": "Workforce development",
 };
 
 /** Organization-facing service labels */
 export const ORG_SERVICE_DISPLAY_LABELS: Record<OrgService, string> = {
-  "Digital equity grant writing": "Digital equity grant writing",
-  "Organizational training": "Organizational training",
-  "Train-the-trainer": "Train-the-trainer programs",
-  "Mutual aid (financial)": "Mutual aid (financial)",
-  "Partnership opportunities": "Partnership opportunities",
   "Collective action": "Collective action",
+  "Digital equity grant writing": "Digital equity grant writing",
   "Information sharing": "Information sharing",
+  "Mutual aid (financial)": "Mutual aid (financial)",
+  "Organizational training": "Organizational training",
   "Other": "Other",
+  "Partnership opportunities": "Partnership opportunities",
+  "Train-the-trainer": "Train-the-trainer programs",
 };
 
 /* ======================================================
