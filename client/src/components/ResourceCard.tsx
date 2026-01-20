@@ -109,13 +109,6 @@ export const ResourceCard: React.FC<Props> = ({
 
           {showMore && (
             <div id={detailsId} className="m-t-md">
-              {resource.serviceArea && (
-                <p className="m-b-sm">
-                  <span className="fw-bold">Service area:</span>{" "}
-                  {resource.serviceArea}
-                </p>
-              )}
-
               {resource.serviceDelivery && (
                 <p className="m-b-sm">
                   <span className="fw-bold">In-person/virtual:</span>{" "}
