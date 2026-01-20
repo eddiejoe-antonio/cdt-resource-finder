@@ -328,7 +328,7 @@ export default function ResourceFinder() {
               {/* County */}
               <div className="col-12 col-lg-4 m-b-sm">
                 <label className="form-label" htmlFor="county">
-                  Located in
+                  I am located in...
                 </label>
                 <select
                   id="county"
@@ -350,7 +350,7 @@ export default function ResourceFinder() {
               {/* Search */}
               <div className="col-12 col-lg-4 m-b-sm">
                 <label className="form-label" htmlFor="search">
-                  Related to
+                 I am seeking the following service...
                 </label>
 
                 <div className="pos-rel text-normal">

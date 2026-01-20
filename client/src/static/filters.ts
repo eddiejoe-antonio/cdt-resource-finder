@@ -79,18 +79,19 @@ export type County = (typeof COUNTIES)[number];
 ====================================================== */
 
 export const SERVICES = [
-  "Locating Low-Cost Internet Service Programs",
-  "Enrollment Assistance in Low-Cost Internet",
+  "Computer Center(s)",
   "Digital Navigation (in-person or virtual/call center)",
   "Digital Literacy & Skills Training",
-  "Technical Support",
   "Free/Low-Cost Devices",
   "Free/Low-Cost Hotspots",
-  "Public Wi-Fi",
-  "Computer Center(s)",
+  "Enrollment Assistance in Low-Cost Internet",
+  "Locating Low-Cost Internet Service Programs",
   "Online Educational Resources",
+  "Public Wi-Fi",
+  "Technical Support",
   "Workforce Development Resources",
 ] as const;
+
 
 export type Service = (typeof SERVICES)[number];
 
@@ -99,14 +100,14 @@ export type Service = (typeof SERVICES)[number];
 ====================================================== */
 
 export const ORG_SERVICES = [
-  "Digital equity grant writing",
-  "Organizational training",
-  "Train-the-trainer",
-  "Mutual aid (financial)",
-  "Partnership opportunities",
   "Collective action",
+  "Digital equity grant writing",
   "Information sharing",
+  "Mutual aid (financial)",
+  "Organizational training",
   "Other",
+  "Partnership opportunities",
+  "Train-the-trainer",
 ] as const;
 
 export type OrgService = (typeof ORG_SERVICES)[number];
