@@ -304,7 +304,7 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
               {/* Audience */}
               <div className="col-12 col-lg-4 m-b-sm">
                 <label className="form-label" htmlFor="audience">
-                  I am seeking resources for...
+                  I am a...
                 </label>
                 <select
                   id="audience"
