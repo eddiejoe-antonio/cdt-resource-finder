@@ -1,5 +1,5 @@
 // src/components/ResourceFinder.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
@@ -54,6 +54,9 @@ export default function ResourceFinder() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Scroll target for paging
+  const resultsTopRef = useRef<HTMLDivElement | null>(null);
+
   // Load CSV once
   useEffect(() => {
     fetchResourcesLocal()
@@ -107,6 +110,7 @@ export default function ResourceFinder() {
     setSelectedResidentServices([]);
     setSelectedOrgServices([]);
     setCurrentPage(1);
+    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // ---- Index once for fast filtering ----
@@ -209,10 +213,21 @@ export default function ResourceFinder() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
 
+  // Clamp page for rendering WITHOUT setState
+  // (If filters shrink results and currentPage is too high, we show the last page.)
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+
   const pageResources = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const start = (safePage - 1) * ITEMS_PER_PAGE;
     return filtered.slice(start, start + ITEMS_PER_PAGE);
-  }, [filtered, currentPage]);
+  }, [filtered, safePage]);
+
+  // ---- Page change handler: clamp + scroll ----
+  const onPageChange = (page: number) => {
+    const clamped = Math.max(1, Math.min(totalPages, page));
+    setCurrentPage(clamped);
+    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   // ----- Results summary with bolded active filters -----
   const activeServices =
@@ -289,10 +304,14 @@ export default function ResourceFinder() {
         </h2>
 
         <p className="m-t-md px-4">
-  Welcome to the California Digital Equity Resource Finder – a tool designed to assist residents and organizations to find digital inclusion programs and services in their communities.  The Resource Finder was updated in January 2026. 
+          Welcome to the California Digital Equity Resource Finder – a tool
+          designed to assist residents and organizations to find digital
+          inclusion programs and services in their communities. The Resource
+          Finder was updated in January 2026.
         </p>
         <p className="m-t-md px-4">
-Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills training. 
+          Use this tool to find resources like free/low-cost devices, public
+          Wi-Fi, or digital skills training.
         </p>
       </header>
 
@@ -310,12 +329,12 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
                   id="audience"
                   className="form-select"
                   value={audience}
-                  onChange={(e) =>
-                    onAudienceChange(e.target.value as Audience)
-                  }
+                  onChange={(e) => onAudienceChange(e.target.value as Audience)}
                 >
                   <option value="Resident">Resident</option>
-                  <option value="Organization">Digital Inclusion Organization</option>
+                  <option value="Organization">
+                    Digital Inclusion Organization
+                  </option>
                 </select>
               </div>
 
@@ -344,7 +363,7 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
               {/* Search */}
               <div className="col-12 col-lg-4 m-b-sm">
                 <label className="form-label" htmlFor="search">
-                 I am seeking the following service...
+                  I am seeking the following service...
                 </label>
 
                 <div className="pos-rel text-normal">
@@ -384,7 +403,9 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
                       type="button"
                       className="gsc-search-button bg-gray-600"
                       aria-label="Search"
-                      onClick={() => {}}
+                      onClick={() => {
+                        // search is live onChange; keep no-op so button doesn't submit
+                      }}
                       style={{
                         flex: "0 0 44px",
                         height: "44px",
@@ -479,6 +500,8 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
 
       {/* Results */}
       <section aria-label="Results">
+        <div ref={resultsTopRef} />
+
         <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
           <div className="flex-grow-1">{renderResultsSummary()}</div>
 
@@ -496,7 +519,9 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
             const servicesToShow =
               audience === "Resident"
                 ? Array.from(r.servicesSet).map((s) => labelForService(s))
-                : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
+                : Array.from(r.orgServicesSet).map((s) =>
+                    labelForOrgService(s)
+                  );
 
             const servicesLabel =
               audience === "Resident"
@@ -516,9 +541,9 @@ Use this tool to find resources like free/low-cost devices, public Wi-Fi, or dig
         </div>
 
         <Pagination
-          currentPage={currentPage}
+          currentPage={safePage}
           totalPages={totalPages}
-          onPageChange={setCurrentPage}
+          onPageChange={onPageChange}
         />
       </section>
     </div>
