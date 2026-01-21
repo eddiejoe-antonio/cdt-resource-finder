@@ -297,7 +297,7 @@ export default function ResourceFinder() {
           refreshed in January 2026.
         </p>
         <p className="m-t-md px-4">
-          Use this tool to find resources like free/low cost devices, public
+          Use this tool to find resources like free/low-cost devices, public
           Wi-Fi, or digital skills training.
         </p>
       </header>
