@@ -105,9 +105,9 @@ export const ORG_SERVICES = [
   "Information sharing",
   "Mutual aid (financial)",
   "Organizational training",
-  "Other",
   "Partnership opportunities",
   "Train-the-trainer",
+    "Other",
 ] as const;
 
 export type OrgService = (typeof ORG_SERVICES)[number];
