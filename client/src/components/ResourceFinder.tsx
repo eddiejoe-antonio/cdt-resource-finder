@@ -289,16 +289,10 @@ export default function ResourceFinder() {
         </h2>
 
         <p className="m-t-md px-4">
-          Welcome to the Digital Equity Resource Finder – a tool designed to
-          assist residents and organizations with finding essential digital
-          inclusion programs and services in their communities. Originally based
-          on input received during the Statewide Digital Equity Planning Grant,
-          the database of resources was updated and the Resource Finder was
-          refreshed in January 2026.
+  Welcome to the California Digital Equity Resource Finder – a tool designed to assist residents and organizations to find digital inclusion programs and services in their communities.  The Resource Finder was updated in January 2026. 
         </p>
         <p className="m-t-md px-4">
-          Use this tool to find resources like free/low-cost devices, public
-          Wi-Fi, or digital skills training.
+Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills training. 
         </p>
       </header>
 
@@ -320,8 +314,8 @@ export default function ResourceFinder() {
                     onAudienceChange(e.target.value as Audience)
                   }
                 >
-                  <option value="Resident">California residents</option>
-                  <option value="Organization">Organizations</option>
+                  <option value="Resident">Resident</option>
+                  <option value="Organization">Digital Inclusion Organization</option>
                 </select>
               </div>
 
@@ -355,7 +349,7 @@ export default function ResourceFinder() {
 
                 <div className="pos-rel text-normal">
                   <span className="sr-only" id="SearchInput">
-                    Search resources
+                    Search
                   </span>
 
                   <div
