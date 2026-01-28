@@ -528,12 +528,19 @@ export default function ResourceFinder() {
                 ? "Services"
                 : "Supports / services for organizations";
 
+            // ✅ NEW: audience-specific Free/Low Cost label
+            const freeLowCostToShow =
+              audience === "Resident"
+                ? r.freeLowCostResidents
+                : r.freeLowCostOrganizations;
+
             return (
               <div key={r.id} className="col-md-6 col-lg-4 m-b-md">
                 <ResourceCard
                   resource={r}
                   servicesToShow={servicesToShow}
                   servicesLabel={servicesLabel}
+                  freeLowCostToShow={freeLowCostToShow} // ✅ NEW
                 />
               </div>
             );

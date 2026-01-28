@@ -16,11 +16,15 @@ type Props = {
   resource: Resource;
   servicesToShow?: string[];
   servicesLabel?: string;
+
+  // ✅ NEW: pass audience-specific Free/Low Cost from ResourceFinder
+  freeLowCostToShow?: string;
 };
 
 export const ResourceCard: React.FC<Props> = ({
   resource,
   servicesToShow,
+  freeLowCostToShow,
 }) => {
   const [showMore, setShowMore] = useState(false);
   const detailsId = useId();
@@ -41,13 +45,14 @@ export const ResourceCard: React.FC<Props> = ({
   );
 
   const fallbackServicesText = useMemo(() => {
-    const s = resource.servicesIndividuals;
-    return s?.trim() ? s.trim() : "";
+    const sv = resource.servicesIndividuals;
+    return sv?.trim() ? sv.trim() : "";
   }, [resource.servicesIndividuals]);
 
   const servicesText = useMemo(() => {
-    if (servicesToShow && servicesToShow.length > 0)
+    if (servicesToShow && servicesToShow.length > 0) {
       return servicesToShow.join(", ");
+    }
     return fallbackServicesText;
   }, [servicesToShow, fallbackServicesText]);
 
@@ -122,10 +127,10 @@ export const ResourceCard: React.FC<Props> = ({
                 </p>
               )}
 
-              {resource.freeLowCost && (
+              {freeLowCostToShow && (
                 <p className="m-b-sm">
                   <span className="fw-bold">Free/Low Cost:</span>{" "}
-                  {resource.freeLowCost}
+                  {freeLowCostToShow}
                 </p>
               )}
 

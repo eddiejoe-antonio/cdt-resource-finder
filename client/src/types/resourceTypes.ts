@@ -21,12 +21,17 @@ export type Resource = {
   // Existing display field you already use in ResourceCard
   servicesIndividuals?: string;
 
-  // ✅ New "Show more" fields (from your CSV)
+  // ✅ "Show more" fields (from your CSV)
   serviceDelivery?: string; // In-Person / Virtually / Virtually, In-Person
   languages?: string; // e.g., "English, Spanish"
-  freeLowCost?: string; // are services free
 
-  // Existing fields you already added
+  // ✅ Audience-specific "Free/Low Cost"
+  // Residents: derived from Q9 (charge? inverted)
+  freeLowCostResidents?: string; // "Yes" | "No"
+  // Organizations: derived from Q13 (charge? inverted)
+  freeLowCostOrganizations?: string; // "Yes" | "No"
+
+  // Fields you already use for filtering
   countiesServedRaw?: string;
   servicesIndividualsRaw?: string;
 

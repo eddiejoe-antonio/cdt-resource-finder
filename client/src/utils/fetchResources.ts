@@ -8,7 +8,9 @@ const s = (v: unknown) => (v == null ? "" : String(v)).trim();
 
 function formatWebsite(url: string) {
   if (!url) return "";
-  if (!url.startsWith("http://") && !url.startsWith("https://")) return `https://${url}`;
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    return `https://${url}`;
+  }
   return url;
 }
 
@@ -40,8 +42,10 @@ const COL = {
   languages:
     "11. What language(s) does your entity/organization provide its services in? Please select all that apply.\u00A0",
 
-  // NOTE: This question is "Do you charge?" (we invert to get Free/Low Cost yes/no)
-  freeLowCost: "13. Does your entity/organization charge for its services?",
+  // ✅ Audience-specific "charge?" questions
+  // Residents use Q9; Organizations use Q13
+  chargeResidents: "9. Does your entity/organization charge for its services?",
+  chargeOrganizations: "13. Does your entity/organization charge for its services?",
 } as const;
 
 /**
@@ -56,23 +60,22 @@ function findKeyStartingWith(row: Row, prefix: string): string | null {
 }
 
 /**
- * Q13 is phrased as: "Does your entity/organization charge for its services?"
- * Your UI wants "Free/Low Cost" shown as yes/no.
+ * Charge? (Yes/No...) -> Free/Low Cost (Yes/No)
  *
- * Therefore we invert:
- * - "No. Our services are offered free of cost."  => freeLowCost = "yes"
- * - "Yes. We charge a fee..."                     => freeLowCost = "no"
+ * You want:
+ * - starts with "No"  => DOES NOT charge => Free/Low Cost = "Yes"
+ * - starts with "Yes" => charges         => Free/Low Cost = "No"
  */
 function normalizeFreeLowCostFromCharge(v: unknown): "Yes" | "No" | "" {
   const txt = s(v).toLowerCase();
   if (!txt) return "";
 
-  // Standard WPForms-style answers start with Yes./No.
-  if (txt.startsWith("no")) return "Yes";
-  if (txt.startsWith("yes")) return "No";
+  // Typical answers start with Yes./No.
+  if (/^\s*no\b/.test(txt)) return "Yes";
+  if (/^\s*yes\b/.test(txt)) return "No";
 
-  // Extra resilience if wording changes:
-  if (txt.includes("free")) return "Yes";
+  // Backup heuristics
+  if (txt.includes("free of cost") || txt.includes("free")) return "Yes";
   if (txt.includes("charge") || txt.includes("fee") || txt.includes("$")) return "No";
 
   return "";
@@ -110,11 +113,19 @@ export function mapRowToResource(row: Row, index: number): Resource {
   const serviceDelivery = s(row[COL.serviceDelivery] || row["serviceDelivery"]);
   const languages = s(row[COL.languages] || row["languages"]);
 
-  // ✅ Q13 (charge?) inverted -> Free/Low Cost yes/no
-  const freeLowCostRaw = row[COL.freeLowCost] || row["freeLowCost"];
-  const freeLowCost = normalizeFreeLowCostFromCharge(freeLowCostRaw);
+  // ✅ Q9 (Residents) charge? -> invert into Free/Low Cost
+  const freeLowCostResidentsRaw =
+    row[COL.chargeResidents] || row["chargeResidents"] || row["freeLowCostResidents"];
+  const freeLowCostResidents = normalizeFreeLowCostFromCharge(freeLowCostResidentsRaw);
 
-  // ✅ Q12: do NOT match a long prefix with ellipses. Just find the "12." column.
+  // ✅ Q13 (Organizations) charge? -> invert into Free/Low Cost
+  const freeLowCostOrganizationsRaw =
+    row[COL.chargeOrganizations] || row["chargeOrganizations"] || row["freeLowCostOrganizations"];
+  const freeLowCostOrganizations = normalizeFreeLowCostFromCharge(
+    freeLowCostOrganizationsRaw
+  );
+
+  // ✅ Q12: find the "12." column (org services)
   const q12Key = findKeyStartingWith(row, "12.");
   const servicesOrganizationsRaw = s(
     (q12Key ? row[q12Key] : undefined) ||
@@ -148,8 +159,9 @@ export function mapRowToResource(row: Row, index: number): Resource {
     serviceDelivery: serviceDelivery || undefined,
     languages: languages || undefined,
 
-    // ✅ now normalized to "yes" (free) / "no" (charges)
-    freeLowCost: freeLowCost || undefined,
+    // ✅ Audience-specific Free/Low Cost
+    freeLowCostResidents: freeLowCostResidents || undefined,
+    freeLowCostOrganizations: freeLowCostOrganizations || undefined,
 
     // ResourceFinder filter inputs
     countiesServedRaw: countiesServedRaw || undefined,
