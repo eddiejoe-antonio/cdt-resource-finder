@@ -323,7 +323,7 @@ export default function ResourceFinder() {
               {/* Audience */}
               <div className="col-12 col-lg-4 m-b-sm">
                 <label className="form-label" htmlFor="audience">
-                  I am a...
+                  I am a/an...
                 </label>
                 <select
                   id="audience"
