@@ -18,7 +18,7 @@ import {
   labelForOrgService,
 } from "../static/filters";
 
-const ITEMS_PER_PAGE = 9;
+const ITEMS_PER_PAGE = 12;
 
 type Audience = "Resident" | "Organization";
 
@@ -333,7 +333,7 @@ export default function ResourceFinder() {
                 >
                   <option value="Resident">Resident</option>
                   <option value="Organization">
-                    Digital Inclusion Organization
+                    Organization
                   </option>
                 </select>
               </div>
