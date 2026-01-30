@@ -84,7 +84,7 @@ export const SERVICES = [
   "Digital Literacy & Skills Training",
   "Free/Low-Cost Devices",
   "Free/Low-Cost Hotspots",
-  "Enrollment Assistance in Low-Cost Internet",
+  "Enrollment assistance in low-cost internet service programs",
   "Locating Low-Cost Internet Service Programs",
   "Online Educational Resources",
   "Public Wi-Fi",
@@ -125,7 +125,7 @@ export const SERVICE_DISPLAY_LABELS: Record<Service, string> = {
         "Free/Low-Cost Devices": "Free or low-cost devices",
   "Free/Low-Cost Hotspots": "Free or low-cost hotspots",
   "Locating Low-Cost Internet Service Programs": "Low-cost internet programs",
-  "Enrollment Assistance in Low-Cost Internet":
+  "Enrollment assistance in low-cost internet service programs":
     "Low-cost internet enrollment assistance",
       "Online Educational Resources": "Online educational resources",
       "Public Wi-Fi": "Public Wi-Fi",
