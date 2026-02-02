@@ -272,7 +272,7 @@ export default function ResourceFinder() {
       parts.push(
         <span key="services">
           {" "}
-          that help you <strong>{serviceText}</strong>
+          that help you find <strong>{serviceText}</strong>
         </span>
       );
     }
