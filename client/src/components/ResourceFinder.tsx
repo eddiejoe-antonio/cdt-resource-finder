@@ -1,6 +1,5 @@
 // src/components/ResourceFinder.tsx
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
@@ -19,6 +18,13 @@ import {
   labelForOrgService,
 } from "../static/filters";
 
+import {
+  PortalMultiSelect,
+  PortalSingleSelect,
+  type MultiSelectOption,
+  type SelectOption,
+} from "./PortalSelects";
+
 const ITEMS_PER_PAGE = 12;
 
 type Audience = "Resident" | "Organization";
@@ -36,221 +42,6 @@ function normalizeSearch(s: string) {
   return s.trim().toLowerCase();
 }
 
-/* =========================================================
-   High-quality Portal MultiSelect (prevents clipping)
-   - NO search box inside dropdown
-   - Closes when clicking "Clear"
-   ========================================================= */
-type MultiSelectOption<T extends string> = {
-  value: T;
-  label: string;
-};
-
-function PortalMultiSelect<T extends string>({
-  id,
-  label,
-  placeholder = "Select...",
-  options,
-  selected,
-  onToggle,
-  onSelectAll,
-  onClear,
-  closeOnClear = true,
-}: {
-  id: string;
-  label: string;
-  placeholder?: string;
-  options: readonly MultiSelectOption<T>[];
-  selected: readonly T[];
-  onToggle: (v: T) => void;
-  onSelectAll: () => void;
-  onClear: () => void;
-  closeOnClear?: boolean;
-}) {
-  const btnRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({
-    top: 0,
-    left: 0,
-    width: 0,
-  });
-
-  const selectedCount = selected.length;
-  const buttonText =
-    selectedCount === 0 ? placeholder : `${selectedCount} selected`;
-
-  const recomputePos = () => {
-    const el = btnRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    setPos({
-      top: r.bottom + window.scrollY,
-      left: r.left + window.scrollX,
-      width: r.width,
-    });
-  };
-
-  // Position the menu when opening (layout to avoid flicker)
-  useLayoutEffect(() => {
-    if (!open) return;
-    recomputePos();
-  }, [open]);
-
-  // Close on outside click + Escape; Reposition on scroll/resize
-  useEffect(() => {
-    if (!open) return;
-
-    function onDown(e: MouseEvent) {
-      const target = e.target as Node;
-      if (btnRef.current?.contains(target)) return;
-      if (menuRef.current?.contains(target)) return;
-      setOpen(false);
-    }
-
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-
-    function onReflow() {
-      recomputePos();
-    }
-
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-
-    // capture scroll anywhere (including nested scroll containers)
-    window.addEventListener("scroll", onReflow, true);
-    window.addEventListener("resize", onReflow);
-
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onReflow, true);
-      window.removeEventListener("resize", onReflow);
-    };
-  }, [open]);
-
-  const menu = open ? (
-    <div
-      ref={menuRef}
-      role="listbox"
-      aria-labelledby={`${id}-label`}
-      style={{
-        position: "absolute",
-        top: pos.top,
-        left: pos.left,
-        width: pos.width,
-        zIndex: 9999,
-      }}
-      className="bg-white border rounded-md shadow-sm"
-    >
-      <div className="d-flex justify-content-between gap-2 px-3 py-2 border-bottom">
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-primary"
-          onClick={() => {
-            onSelectAll();
-            // keep open
-          }}
-        >
-          Select all
-        </button>
-
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-secondary"
-          onClick={() => {
-            onClear();
-            if (closeOnClear) setOpen(false);
-          }}
-        >
-          Clear
-        </button>
-      </div>
-
-      <div
-        className="p-3"
-        style={{
-          maxHeight: 320,
-          overflow: "auto",
-        }}
-      >
-        {options.map((opt) => {
-          const checked = selected.includes(opt.value);
-          const checkboxId = `${id}-${normalizeValue(opt.value)}`;
-
-          return (
-            <label
-              key={opt.value}
-              htmlFor={checkboxId}
-              className="d-flex align-items-start gap-2 cursor-pointer select-none m-b-sm"
-            >
-              <input
-                id={checkboxId}
-                type="checkbox"
-                checked={checked}
-                onChange={() => onToggle(opt.value)}
-                className="h-5 w-5 mt-0.5 border border-gray-300 accent-gray-700"
-              />
-              <span className="text-normal">{opt.label}</span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  ) : null;
-
-  return (
-    <div>
-      <label id={`${id}-label`} className="form-label" htmlFor={id}>
-        {label}
-      </label>
-
-      {/* Button styled like your selects */}
-      <button
-        id={id}
-        ref={btnRef}
-        type="button"
-        className="form-select d-flex justify-content-between align-items-center"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        style={{ minHeight: 44 }}
-      >
-        <span className={selectedCount === 0 ? "text-muted" : ""}>
-          {buttonText}
-        </span>
-
-        {/* caret */}
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 20 20"
-          aria-hidden="true"
-          className={`transition-transform ${open ? "rotate-180" : ""}`}
-        >
-          <path
-            d="M5.5 7.5L10 12l4.5-4.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-
-      {/* Portal prevents cut-off/clipping */}
-      {open ? createPortal(menu, document.body) : null}
-    </div>
-  );
-}
-
-/* =========================================================
-   ResourceFinder
-   ========================================================= */
 export default function ResourceFinder() {
   const [allResources, setAllResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -259,13 +50,9 @@ export default function ResourceFinder() {
   // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCounty, setSelectedCounty] = useState<County | "">("");
-  const [selectedResidentServices, setSelectedResidentServices] = useState<
-    Service[]
-  >([]);
-  const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>(
-    []
-  );
+  const [selectedCounties, setSelectedCounties] = useState<County[]>([]);
+  const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
+  const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -273,7 +60,6 @@ export default function ResourceFinder() {
   // Scroll target for paging
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
-  // Load CSV once
   useEffect(() => {
     fetchResourcesLocal()
       .then(setAllResources)
@@ -281,7 +67,7 @@ export default function ResourceFinder() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ---- Filter handlers (reset page here, not in an effect) ----
+  // Handlers
   const onAudienceChange = (next: Audience) => {
     setAudience(next);
     setSelectedResidentServices([]);
@@ -294,28 +80,32 @@ export default function ResourceFinder() {
     setCurrentPage(1);
   };
 
-  const onCountyChange = (next: County | "") => {
-    setSelectedCounty(next);
+  const toggleCounty = (c: County) => {
+    setSelectedCounties((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    setCurrentPage(1);
+  };
+
+  const selectAllCounties = () => {
+    setSelectedCounties([...COUNTIES]);
+    setCurrentPage(1);
+  };
+
+  const clearCounties = () => {
+    setSelectedCounties([]);
     setCurrentPage(1);
   };
 
   const toggleResidentService = (svc: Service) => {
-    setSelectedResidentServices((prev) => {
-      const next = prev.includes(svc)
-        ? prev.filter((x) => x !== svc)
-        : [...prev, svc];
-      return next;
-    });
+    setSelectedResidentServices((prev) =>
+      prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
+    );
     setCurrentPage(1);
   };
 
   const toggleOrgService = (svc: OrgService) => {
-    setSelectedOrgServices((prev) => {
-      const next = prev.includes(svc)
-        ? prev.filter((x) => x !== svc)
-        : [...prev, svc];
-      return next;
-    });
+    setSelectedOrgServices((prev) =>
+      prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
+    );
     setCurrentPage(1);
   };
 
@@ -342,24 +132,17 @@ export default function ResourceFinder() {
   const clearAllFilters = () => {
     setAudience("Resident");
     setSearchQuery("");
-    setSelectedCounty("");
+    setSelectedCounties([]);
     setSelectedResidentServices([]);
     setSelectedOrgServices([]);
     setCurrentPage(1);
-    resultsTopRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ---- Index once for fast filtering ----
+  // Index once for fast filtering
   const indexedResources = useMemo<IndexedResource[]>(() => {
-    const countyMap = new Map<string, County>(
-      COUNTIES.map((c) => [normalizeValue(c), c])
-    );
-    const serviceMap = new Map<string, Service>(
-      SERVICES.map((s) => [normalizeValue(s), s])
-    );
+    const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
+    const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
     const orgServiceMap = new Map<string, OrgService>(
       ORG_SERVICES.map((s) => [normalizeValue(s), s])
     );
@@ -419,7 +202,11 @@ export default function ResourceFinder() {
 
       if (!matchesSearch) return false;
 
-      if (selectedCounty && !r.countiesSet.has(selectedCounty)) return false;
+      // Counties: if any selected, require intersection
+      if (selectedCounties.length > 0) {
+        const ok = selectedCounties.some((c) => r.countiesSet.has(c));
+        if (!ok) return false;
+      }
 
       if (audience === "Organization") {
         if (!r.hasOrgServices) return false;
@@ -445,7 +232,7 @@ export default function ResourceFinder() {
     indexedResources,
     audience,
     searchQuery,
-    selectedCounty,
+    selectedCounties,
     selectedResidentServices,
     selectedOrgServices,
   ]);
@@ -461,10 +248,7 @@ export default function ResourceFinder() {
   const onPageChange = (page: number) => {
     const clamped = Math.max(1, Math.min(totalPages, page));
     setCurrentPage(clamped);
-    resultsTopRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const activeServices =
@@ -474,9 +258,7 @@ export default function ResourceFinder() {
 
   const activeServiceLabels = useMemo(() => {
     return activeServices.map((s) =>
-      audience === "Resident"
-        ? labelForService(s as Service)
-        : labelForOrgService(s as OrgService)
+      audience === "Resident" ? labelForService(s as Service) : labelForOrgService(s as OrgService)
     );
   }, [activeServices, audience]);
 
@@ -489,11 +271,18 @@ export default function ResourceFinder() {
       </span>
     );
 
-    if (selectedCounty) {
+    if (selectedCounties.length === 1) {
       parts.push(
         <span key="county">
           {" "}
-          for <strong>{selectedCounty} County</strong>
+          for <strong>{selectedCounties[0]} County</strong>
+        </span>
+      );
+    } else if (selectedCounties.length > 1) {
+      parts.push(
+        <span key="county">
+          {" "}
+          for <strong>{selectedCounties.length} counties</strong>
         </span>
       );
     }
@@ -520,6 +309,17 @@ export default function ResourceFinder() {
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
+  // Options
+  const audienceOptions: SelectOption<Audience>[] = [
+    { value: "Resident", label: "Resident" },
+    { value: "Organization", label: "Organization" },
+  ];
+
+  const countyOptions: MultiSelectOption<County>[] = COUNTIES.map((c) => ({
+    value: c,
+    label: `${c} County`,
+  }));
+
   const residentOptions: MultiSelectOption<Service>[] = SERVICES.map((s) => ({
     value: s,
     label: labelForService(s),
@@ -531,9 +331,9 @@ export default function ResourceFinder() {
   }));
 
   return (
-    <div className="container-fluid px-0">
+    <div className="container-fluid">
       {/* Header */}
-      <header className="m-y-lg m-x-md">
+      <header className="m-y-lg md:mx-32 lg:mx-64">
         <h2
           className="
             h2 bg-[#1f2576] text-white py-8 px-4
@@ -551,61 +351,48 @@ export default function ResourceFinder() {
         </h2>
 
         <p className="m-t-md px-4">
-          Welcome to the California Digital Equity Resource Finder – a tool
-          designed to assist residents and organizations to find digital
-          inclusion programs and services in their communities. The Resource
-          Finder was updated in January 2026.
+          Welcome to the California Digital Equity Resource Finder – a tool designed to assist
+          residents and organizations to find digital inclusion programs and services in their
+          communities. The Resource Finder was updated in January 2026.
         </p>
         <p className="m-t-md px-4">
-          Use this tool to find resources like free/low-cost devices, public
-          Wi-Fi, or digital skills training.
+          Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
+          training.
         </p>
       </header>
 
       {/* Filters */}
-      <section className="m-b-lg" aria-label="Filters">
-        <form onSubmit={(e) => e.preventDefault()} className="card">
-          <div className="card-body bg-gray-50 border-b border-t border-gray-300">
-            {/* Row 1: Audience + County */}
+      <section className="m-b-lg bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
+        <form onSubmit={(e) => e.preventDefault()} className="card md:mx-36">
+          <div className="card-body px-0 bg-gray-50">
             <div className="row">
-              <div className="col-12 col-lg-6 m-b-sm">
-                <label className="form-label" htmlFor="audience">
-                  I am a/an...
-                </label>
-                <select
-                  id="audience"
-                  className="form-select"
+              <div className="col-12 col-lg-6">
+                <PortalSingleSelect
+                  id="audience-select"
+                  label="I am a/an..."
+                  placeholder="Select audience"
+                  options={audienceOptions}
                   value={audience}
-                  onChange={(e) => onAudienceChange(e.target.value as Audience)}
-                >
-                  <option value="Resident">Resident</option>
-                  <option value="Organization">Organization</option>
-                </select>
+                  onChange={(v) => onAudienceChange(v)}
+                />
               </div>
 
               <div className="col-12 col-lg-6 m-b-sm">
-                <label className="form-label" htmlFor="county">
-                  I am located in...
-                </label>
-                <select
-                  id="county"
-                  className="form-select"
-                  value={selectedCounty}
-                  onChange={(e) =>
-                    onCountyChange((e.target.value as County) || "")
-                  }
-                >
-                  <option value="">Any county</option>
-                  {COUNTIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c} County
-                    </option>
-                  ))}
-                </select>
+                <PortalMultiSelect
+                  id="county-multiselect"
+                  label="I am located in... (select all that apply)"
+                  placeholder="Any county"
+                  options={countyOptions}
+                  selected={selectedCounties}
+                  onToggle={(val) => toggleCounty(val as County)}
+                  onSelectAll={selectAllCounties}
+                  onClear={clearCounties}
+                  closeOnClear={true}
+                />
               </div>
             </div>
 
-            {/* Row 2: Search + Services */}
+            {/* Row 2 */}
             <div className="row m-t-md">
               <div className="col-12 col-lg-6 m-b-sm">
                 <label className="form-label" htmlFor="search">
@@ -619,13 +406,16 @@ export default function ResourceFinder() {
 
                   <div
                     className="d-flex w-100"
-                    style={{
-                      alignItems: "stretch",
-                      flexWrap: "nowrap",
-                      minWidth: 0,
-                    }}
+                    style={{ alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, position: "relative" }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") e.preventDefault();
+                      const target = e.target as HTMLElement | null;
+                      const isInput = target?.id === "search";
+                      if (e.key === "Enter" && isInput) e.preventDefault();
+                      if (e.key === "Escape" && isInput && searchQuery) {
+                        e.preventDefault();
+                        onSearchChange("");
+                        (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                      }
                     }}
                   >
                     <input
@@ -642,15 +432,57 @@ export default function ResourceFinder() {
                         minWidth: 0,
                         height: "44px",
                         minHeight: "44px",
+                        paddingRight: searchQuery ? "104px" : "72px",
                       }}
                     />
+
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        aria-label="Clear search"
+                        title="Clear search"
+                        onClick={() => {
+                          onSearchChange("");
+                          (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                        }}
+                        className="position-absolute bg-transparent border-0"
+                        style={{
+                          right: "44px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          width: "44px",
+                          height: "44px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSearchChange("");
+                            (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                          }
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
+                          <path
+                            d="M5 5l10 10M15 5L5 15"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="sr-only">Clear</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
                       className="gsc-search-button bg-gray-600"
                       aria-label="Search"
                       onClick={() => {
-                        // search is live onChange; keep no-op so button doesn't submit
+                        // no-op
                       }}
                       style={{
                         flex: "0 0 44px",
@@ -662,11 +494,7 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
-                      />
+                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -683,14 +511,9 @@ export default function ResourceFinder() {
                   }
                   placeholder="All services"
                   options={audience === "Resident" ? residentOptions : orgOptions}
-                  selected={
-                    audience === "Resident"
-                      ? selectedResidentServices
-                      : selectedOrgServices
-                  }
+                  selected={audience === "Resident" ? selectedResidentServices : selectedOrgServices}
                   onToggle={(val) => {
-                    if (audience === "Resident")
-                      toggleResidentService(val as Service);
+                    if (audience === "Resident") toggleResidentService(val as Service);
                     else toggleOrgService(val as OrgService);
                   }}
                   onSelectAll={() => {
@@ -701,7 +524,7 @@ export default function ResourceFinder() {
                     if (audience === "Resident") clearResidentServices();
                     else clearOrgServices();
                   }}
-                  closeOnClear={true} // ✅ closes dropdown when "Clear" is clicked
+                  closeOnClear={true}
                 />
               </div>
             </div>
@@ -710,7 +533,7 @@ export default function ResourceFinder() {
       </section>
 
       {/* Results */}
-      <section aria-label="Results">
+      <section className="md:mx-36" aria-label="Results">
         <div ref={resultsTopRef} />
 
         <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
@@ -730,19 +553,13 @@ export default function ResourceFinder() {
             const servicesToShow =
               audience === "Resident"
                 ? Array.from(r.servicesSet).map((s) => labelForService(s))
-                : Array.from(r.orgServicesSet).map((s) =>
-                    labelForOrgService(s)
-                  );
+                : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
 
             const servicesLabel =
-              audience === "Resident"
-                ? "Services"
-                : "Supports / services for organizations";
+              audience === "Resident" ? "Services" : "Supports / services for organizations";
 
             const freeLowCostToShow =
-              audience === "Resident"
-                ? r.freeLowCostResidents
-                : r.freeLowCostOrganizations;
+              audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
 
             return (
               <div key={r.id} className="col-md-6 col-lg-4 m-b-md">
@@ -757,11 +574,7 @@ export default function ResourceFinder() {
           })}
         </div>
 
-        <Pagination
-          currentPage={safePage}
-          totalPages={totalPages}
-          onPageChange={onPageChange}
-        />
+        <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={onPageChange} />
       </section>
     </div>
   );
