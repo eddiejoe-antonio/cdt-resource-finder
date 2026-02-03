@@ -1,5 +1,6 @@
 // src/components/ResourceFinder.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
@@ -35,6 +36,221 @@ function normalizeSearch(s: string) {
   return s.trim().toLowerCase();
 }
 
+/* =========================================================
+   High-quality Portal MultiSelect (prevents clipping)
+   - NO search box inside dropdown
+   - Closes when clicking "Clear"
+   ========================================================= */
+type MultiSelectOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+function PortalMultiSelect<T extends string>({
+  id,
+  label,
+  placeholder = "Select...",
+  options,
+  selected,
+  onToggle,
+  onSelectAll,
+  onClear,
+  closeOnClear = true,
+}: {
+  id: string;
+  label: string;
+  placeholder?: string;
+  options: readonly MultiSelectOption<T>[];
+  selected: readonly T[];
+  onToggle: (v: T) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+  closeOnClear?: boolean;
+}) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
+
+  const selectedCount = selected.length;
+  const buttonText =
+    selectedCount === 0 ? placeholder : `${selectedCount} selected`;
+
+  const recomputePos = () => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({
+      top: r.bottom + window.scrollY,
+      left: r.left + window.scrollX,
+      width: r.width,
+    });
+  };
+
+  // Position the menu when opening (layout to avoid flicker)
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePos();
+  }, [open]);
+
+  // Close on outside click + Escape; Reposition on scroll/resize
+  useEffect(() => {
+    if (!open) return;
+
+    function onDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (btnRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+
+    function onReflow() {
+      recomputePos();
+    }
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+
+    // capture scroll anywhere (including nested scroll containers)
+    window.addEventListener("scroll", onReflow, true);
+    window.addEventListener("resize", onReflow);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onReflow, true);
+      window.removeEventListener("resize", onReflow);
+    };
+  }, [open]);
+
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      role="listbox"
+      aria-labelledby={`${id}-label`}
+      style={{
+        position: "absolute",
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 9999,
+      }}
+      className="bg-white border rounded-md shadow-sm"
+    >
+      <div className="d-flex justify-content-between gap-2 px-3 py-2 border-bottom">
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-primary"
+          onClick={() => {
+            onSelectAll();
+            // keep open
+          }}
+        >
+          Select all
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-secondary"
+          onClick={() => {
+            onClear();
+            if (closeOnClear) setOpen(false);
+          }}
+        >
+          Clear
+        </button>
+      </div>
+
+      <div
+        className="p-3"
+        style={{
+          maxHeight: 320,
+          overflow: "auto",
+        }}
+      >
+        {options.map((opt) => {
+          const checked = selected.includes(opt.value);
+          const checkboxId = `${id}-${normalizeValue(opt.value)}`;
+
+          return (
+            <label
+              key={opt.value}
+              htmlFor={checkboxId}
+              className="d-flex align-items-start gap-2 cursor-pointer select-none m-b-sm"
+            >
+              <input
+                id={checkboxId}
+                type="checkbox"
+                checked={checked}
+                onChange={() => onToggle(opt.value)}
+                className="h-5 w-5 mt-0.5 border border-gray-300 accent-gray-700"
+              />
+              <span className="text-normal">{opt.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div>
+      <label id={`${id}-label`} className="form-label" htmlFor={id}>
+        {label}
+      </label>
+
+      {/* Button styled like your selects */}
+      <button
+        id={id}
+        ref={btnRef}
+        type="button"
+        className="form-select d-flex justify-content-between align-items-center"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        style={{ minHeight: 44 }}
+      >
+        <span className={selectedCount === 0 ? "text-muted" : ""}>
+          {buttonText}
+        </span>
+
+        {/* caret */}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 20 20"
+          aria-hidden="true"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path
+            d="M5.5 7.5L10 12l4.5-4.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {/* Portal prevents cut-off/clipping */}
+      {open ? createPortal(menu, document.body) : null}
+    </div>
+  );
+}
+
+/* =========================================================
+   ResourceFinder
+   ========================================================= */
 export default function ResourceFinder() {
   const [allResources, setAllResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +319,26 @@ export default function ResourceFinder() {
     setCurrentPage(1);
   };
 
+  const selectAllResidentServices = () => {
+    setSelectedResidentServices([...SERVICES]);
+    setCurrentPage(1);
+  };
+
+  const clearResidentServices = () => {
+    setSelectedResidentServices([]);
+    setCurrentPage(1);
+  };
+
+  const selectAllOrgServices = () => {
+    setSelectedOrgServices([...ORG_SERVICES]);
+    setCurrentPage(1);
+  };
+
+  const clearOrgServices = () => {
+    setSelectedOrgServices([]);
+    setCurrentPage(1);
+  };
+
   const clearAllFilters = () => {
     setAudience("Resident");
     setSearchQuery("");
@@ -110,7 +346,10 @@ export default function ResourceFinder() {
     setSelectedResidentServices([]);
     setSelectedOrgServices([]);
     setCurrentPage(1);
-    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    resultsTopRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   // ---- Index once for fast filtering ----
@@ -212,9 +451,6 @@ export default function ResourceFinder() {
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-
-  // Clamp page for rendering WITHOUT setState
-  // (If filters shrink results and currentPage is too high, we show the last page.)
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
 
   const pageResources = useMemo(() => {
@@ -222,14 +458,15 @@ export default function ResourceFinder() {
     return filtered.slice(start, start + ITEMS_PER_PAGE);
   }, [filtered, safePage]);
 
-  // ---- Page change handler: clamp + scroll ----
   const onPageChange = (page: number) => {
     const clamped = Math.max(1, Math.min(totalPages, page));
     setCurrentPage(clamped);
-    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    resultsTopRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
-  // ----- Results summary with bolded active filters -----
   const activeServices =
     audience === "Resident"
       ? (selectedResidentServices as readonly string[])
@@ -272,7 +509,7 @@ export default function ResourceFinder() {
       parts.push(
         <span key="services">
           {" "}
-          that help you with <strong>{serviceText}</strong>
+          that help you find <strong>{serviceText}</strong>
         </span>
       );
     }
@@ -283,10 +520,20 @@ export default function ResourceFinder() {
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
+  const residentOptions: MultiSelectOption<Service>[] = SERVICES.map((s) => ({
+    value: s,
+    label: labelForService(s),
+  }));
+
+  const orgOptions: MultiSelectOption<OrgService>[] = ORG_SERVICES.map((s) => ({
+    value: s,
+    label: labelForOrgService(s),
+  }));
+
   return (
-    <div className="container">
+    <div className="container-fluid px-0">
       {/* Header */}
-      <header className="m-y-lg">
+      <header className="m-y-lg m-x-md">
         <h2
           className="
             h2 bg-[#1f2576] text-white py-8 px-4
@@ -319,9 +566,9 @@ export default function ResourceFinder() {
       <section className="m-b-lg" aria-label="Filters">
         <form onSubmit={(e) => e.preventDefault()} className="card">
           <div className="card-body bg-gray-50 border-b border-t border-gray-300">
+            {/* Row 1: Audience + County */}
             <div className="row">
-              {/* Audience */}
-              <div className="col-12 col-lg-4 m-b-sm">
+              <div className="col-12 col-lg-6 m-b-sm">
                 <label className="form-label" htmlFor="audience">
                   I am a/an...
                 </label>
@@ -332,14 +579,11 @@ export default function ResourceFinder() {
                   onChange={(e) => onAudienceChange(e.target.value as Audience)}
                 >
                   <option value="Resident">Resident</option>
-                  <option value="Organization">
-                    Organization
-                  </option>
+                  <option value="Organization">Organization</option>
                 </select>
               </div>
 
-              {/* County */}
-              <div className="col-12 col-lg-4 m-b-sm">
+              <div className="col-12 col-lg-6 m-b-sm">
                 <label className="form-label" htmlFor="county">
                   I am located in...
                 </label>
@@ -359,9 +603,11 @@ export default function ResourceFinder() {
                   ))}
                 </select>
               </div>
+            </div>
 
-              {/* Search */}
-              <div className="col-12 col-lg-4 m-b-sm">
+            {/* Row 2: Search + Services */}
+            <div className="row m-t-md">
+              <div className="col-12 col-lg-6 m-b-sm">
                 <label className="form-label" htmlFor="search">
                   I am seeking the following service...
                 </label>
@@ -426,74 +672,39 @@ export default function ResourceFinder() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Services */}
-            <fieldset className="m-t-md">
-              <label className="form-label">
-                <strong>
-                  {audience === "Resident"
-                    ? "Services that include"
-                    : "Support that includes"}
-                </strong>{" "}
-                (select all that apply)
-              </label>
-
-              <div className="row m-t-sm">
-                {(audience === "Resident" ? SERVICES : ORG_SERVICES).map(
-                  (svc) => {
-                    const checked =
-                      audience === "Resident"
-                        ? selectedResidentServices.includes(svc as Service)
-                        : selectedOrgServices.includes(svc as OrgService);
-
-                    const id = `svc-${normalizeValue(String(svc))}`;
-
-                    const displayLabel =
-                      audience === "Resident"
-                        ? labelForService(svc as Service)
-                        : labelForOrgService(svc as OrgService);
-
-                    return (
-                      <div
-                        key={String(svc)}
-                        className="col-sm-6 col-lg-3 m-b-md"
-                      >
-                        <label
-                          htmlFor={id}
-                          className="
-                            !grid ![grid-template-columns:1.25rem_1fr]
-                            items-start
-                            gap-x-4
-                            cursor-pointer select-none
-                          "
-                        >
-                          <input
-                            id={id}
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              if (audience === "Resident")
-                                toggleResidentService(svc as Service);
-                              else toggleOrgService(svc as OrgService);
-                            }}
-                            className="
-                              h-5 w-5 mt-0.5
-                              border border-gray-300
-                              accent-gray-700
-                            "
-                          />
-
-                          <span className="block min-w-0 text-base leading-snug font-normal">
-                            {displayLabel}
-                          </span>
-                        </label>
-                      </div>
-                    );
+              <div className="col-12 col-lg-6 m-b-sm">
+                <PortalMultiSelect
+                  id="services-multiselect"
+                  label={
+                    audience === "Resident"
+                      ? "Services that include (select all that apply)"
+                      : "Support that includes (select all that apply)"
                   }
-                )}
+                  placeholder="All services"
+                  options={audience === "Resident" ? residentOptions : orgOptions}
+                  selected={
+                    audience === "Resident"
+                      ? selectedResidentServices
+                      : selectedOrgServices
+                  }
+                  onToggle={(val) => {
+                    if (audience === "Resident")
+                      toggleResidentService(val as Service);
+                    else toggleOrgService(val as OrgService);
+                  }}
+                  onSelectAll={() => {
+                    if (audience === "Resident") selectAllResidentServices();
+                    else selectAllOrgServices();
+                  }}
+                  onClear={() => {
+                    if (audience === "Resident") clearResidentServices();
+                    else clearOrgServices();
+                  }}
+                  closeOnClear={true} // ✅ closes dropdown when "Clear" is clicked
+                />
               </div>
-            </fieldset>
+            </div>
           </div>
         </form>
       </section>
@@ -528,7 +739,6 @@ export default function ResourceFinder() {
                 ? "Services"
                 : "Supports / services for organizations";
 
-            // ✅ NEW: audience-specific Free/Low Cost label
             const freeLowCostToShow =
               audience === "Resident"
                 ? r.freeLowCostResidents
@@ -540,7 +750,7 @@ export default function ResourceFinder() {
                   resource={r}
                   servicesToShow={servicesToShow}
                   servicesLabel={servicesLabel}
-                  freeLowCostToShow={freeLowCostToShow} // ✅ NEW
+                  freeLowCostToShow={freeLowCostToShow}
                 />
               </div>
             );
