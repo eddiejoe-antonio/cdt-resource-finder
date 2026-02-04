@@ -12,6 +12,7 @@
   "dependencies": {
     "@cagovweb/state-template": "^6.5.1",
     "@heroicons/react": "^2.2.0",
+    "fuse.js": "^7.1.0",
     "mapbox-gl": "^3.18.1",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",

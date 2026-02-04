@@ -1,6 +1,7 @@
 // src/components/ResourceFinder.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import Fuse from "fuse.js";
 import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
@@ -40,18 +41,15 @@ type IndexedResource = Resource & {
   hasOrgServices: boolean;
 };
 
-function normalizeSearch(s: string) {
-  return s.trim().toLowerCase();
-}
-
 function getLonLat(r: Resource): { lon: number; lat: number } | null {
-  const lat = (r as unknown as { lat?: unknown }).lat;
-  const lon = (r as unknown as { long?: unknown }).long;
+  const lat = r.lat;
+  const lon = r.long;
 
   if (typeof lat !== "number" || typeof lon !== "number") return null;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (lat < -90 || lat > 90) return null;
   if (lon < -180 || lon > 180) return null;
+
   return { lat, lon };
 }
 
@@ -64,7 +62,10 @@ type ResourceFeatureProps = {
 
 type ResourceFeature = {
   type: "Feature";
-  geometry: { type: "Point"; coordinates: [number, number] };
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
   properties: ResourceFeatureProps;
 };
 
@@ -73,19 +74,14 @@ type ResourceFeatureCollection = {
   features: ResourceFeature[];
 };
 
-// Approximate California bounds (SW, NE) [lon, lat]
+// California “nice” extent (rough bbox)
 const CA_BOUNDS: mapboxgl.LngLatBoundsLike = [
-  [-124.55, 32.45],
-  [-114.1, 42.1],
+  [-124.48, 32.53], // SW
+  [-114.13, 42.01], // NE
 ];
 
-function flyToCalifornia(map: mapboxgl.Map) {
-  map.fitBounds(CA_BOUNDS, {
-    padding: 50,
-    duration: 900,
-    essential: true,
-  });
-}
+const MAP_SOURCE_ID = "resources";
+const MAP_LAYER_ID = "resources-circle";
 
 export default function ResourceFinder() {
   const [allResources, setAllResources] = useState<Resource[]>([]);
@@ -101,11 +97,11 @@ export default function ResourceFinder() {
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
+  // Selection (map mode side-panel filtering)
+  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
+
   // Pagination (list view only)
   const [currentPage, setCurrentPage] = useState(1);
-
-  // Selection (map view side panel)
-  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
 
   // Scroll target for paging
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
@@ -113,9 +109,57 @@ export default function ResourceFinder() {
   // Map refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const tooltipRef = useRef<mapboxgl.Popup | null>(null);
+  const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
 
-  // ---------- Data load ----------
+  // Keep a coordinate lookup so click -> zoom works without re-querying
+  const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
+
+  // ----- Map helper fns (kept ABOVE return; no “functions after return”) -----
+  const flyToCalifornia = (opts?: { immediate?: boolean }) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // If style not loaded yet, wait
+    if (!map.isStyleLoaded()) {
+      map.once("load", () => flyToCalifornia(opts));
+      return;
+    }
+
+    // Smooth by default
+    map.fitBounds(CA_BOUNDS, {
+      padding: 40,
+      maxZoom: 6.5,
+      duration: opts?.immediate ? 0 : 900,
+    });
+  };
+
+  const flyToResourceId = (id: string) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const coords = coordByIdRef.current.get(id);
+    if (!coords) return;
+
+    if (!map.isStyleLoaded()) {
+      map.once("load", () => flyToResourceId(id));
+      return;
+    }
+
+    map.flyTo({
+      center: coords,
+      zoom: 12,
+      duration: 900,
+      essential: true,
+    });
+  };
+
+  const clearSelectionAndZoomOut = () => {
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  // -------------------------------------------------------------------------
+
   useEffect(() => {
     fetchResourcesLocal()
       .then(setAllResources)
@@ -123,7 +167,102 @@ export default function ResourceFinder() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ---------- Index once ----------
+  // Handlers (clear selection + zoom out on ANY filter change)
+  const onAudienceChange = (next: Audience) => {
+    setAudience(next);
+    setSelectedResidentServices([]);
+    setSelectedOrgServices([]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const onSearchChange = (next: string) => {
+    setSearchQuery(next);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const toggleCounty = (c: County) => {
+    setSelectedCounties((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const selectAllCounties = () => {
+    setSelectedCounties([...COUNTIES]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const clearCounties = () => {
+    setSelectedCounties([]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const toggleResidentService = (svc: Service) => {
+    setSelectedResidentServices((prev) =>
+      prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
+    );
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const toggleOrgService = (svc: OrgService) => {
+    setSelectedOrgServices((prev) =>
+      prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
+    );
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const selectAllResidentServices = () => {
+    setSelectedResidentServices([...SERVICES]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const clearResidentServices = () => {
+    setSelectedResidentServices([]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const selectAllOrgServices = () => {
+    setSelectedOrgServices([...ORG_SERVICES]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  const clearOrgServices = () => {
+    setSelectedOrgServices([]);
+    setCurrentPage(1);
+
+    setSelectedResourceId(null);
+    flyToCalifornia();
+  };
+
+  // Index once for fast filtering
   const indexedResources = useMemo<IndexedResource[]>(() => {
     const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
     const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
@@ -159,33 +298,46 @@ export default function ResourceFinder() {
     });
   }, [allResources]);
 
-  // ---------- Filtering ----------
+  // Fuse index (fuzzy search)
+  const fuse = useMemo(() => {
+    return new Fuse(indexedResources, {
+      includeScore: true,
+      shouldSort: true,
+
+      // Tune: lower = stricter, higher = fuzzier
+      threshold: 0.35,
+      distance: 200,
+      ignoreLocation: true,
+      minMatchCharLength: 2,
+
+      keys: [
+        { name: "name", weight: 4 },
+        { name: "orgType", weight: 2 },
+        { name: "serviceArea", weight: 1.5 },
+
+        { name: "addressLine1", weight: 1.2 },
+        { name: "city", weight: 1.2 },
+        { name: "state", weight: 1.0 },
+        { name: "zip", weight: 1.0 },
+
+        { name: "website", weight: 1.0 },
+        { name: "contactName", weight: 1.0 },
+        { name: "contactEmail", weight: 1.0 },
+
+        { name: "countiesServedRaw", weight: 1.2 },
+        { name: "servicesIndividualsRaw", weight: 1.2 },
+        { name: "orgServicesRaw", weight: 1.2 },
+      ],
+    });
+  }, [indexedResources]);
+
+  // Filtered results: fuzzy search first, then your existing filters
   const filtered = useMemo(() => {
-    const q = normalizeSearch(searchQuery);
+    const q = searchQuery.trim();
 
-    return indexedResources.filter((r) => {
-      const matchesSearch =
-        !q ||
-        [
-          r.name,
-          r.orgType,
-          r.addressLine1,
-          r.city,
-          r.state,
-          r.zip,
-          r.website,
-          r.contactName,
-          r.contactEmail,
-          r.serviceArea,
-          r.countiesServedRaw,
-          r.servicesIndividualsRaw,
-          r.orgServicesRaw,
-        ]
-          .filter((v): v is string => Boolean(v))
-          .some((v) => normalizeSearch(v).includes(q));
+    const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((r) => r.item);
 
-      if (!matchesSearch) return false;
-
+    return searched.filter((r) => {
       if (selectedCounties.length > 0) {
         const ok = selectedCounties.some((c) => r.countiesSet.has(c));
         if (!ok) return false;
@@ -193,6 +345,7 @@ export default function ResourceFinder() {
 
       if (audience === "Organization") {
         if (!r.hasOrgServices) return false;
+
         if (
           selectedOrgServices.length > 0 &&
           !selectedOrgServices.some((s) => r.orgServicesSet.has(s))
@@ -212,14 +365,22 @@ export default function ResourceFinder() {
     });
   }, [
     indexedResources,
-    audience,
+    fuse,
     searchQuery,
+    audience,
     selectedCounties,
     selectedResidentServices,
     selectedOrgServices,
   ]);
 
-  // ---------- List pagination ----------
+  // In map mode: if a resource is selected, side panel shows ONLY that one
+  const sidePanelResources = useMemo(() => {
+    if (!selectedResourceId) return filtered;
+    const chosen = filtered.find((r) => r.id === selectedResourceId);
+    return chosen ? [chosen] : filtered;
+  }, [filtered, selectedResourceId]);
+
+  // List mode pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
 
@@ -234,19 +395,6 @@ export default function ResourceFinder() {
     resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ---------- Selection derived (NO setState-in-effect) ----------
-  const effectiveSelectedId = useMemo(() => {
-    if (!selectedResourceId) return null;
-    return filtered.some((r) => r.id === selectedResourceId) ? selectedResourceId : null;
-  }, [filtered, selectedResourceId]);
-
-  const sidePanelResources = useMemo(() => {
-    if (!effectiveSelectedId) return filtered;
-    const hit = filtered.find((r) => r.id === effectiveSelectedId);
-    return hit ? [hit] : filtered;
-  }, [filtered, effectiveSelectedId]);
-
-  // ---------- Labels ----------
   const activeServices =
     audience === "Resident"
       ? (selectedResidentServices as readonly string[])
@@ -302,17 +450,22 @@ export default function ResourceFinder() {
     return <p className="m-0">{parts}</p>;
   };
 
-  // ---------- Map GeoJSON ----------
+  // -------- Map data (uses ALL filtered results, not selected subset) --------
   const mapPoints = useMemo<ResourceFeature[]>(() => {
     const feats: ResourceFeature[] = [];
+    const coordLookup = new Map<string, [number, number]>();
+
     for (const r of filtered) {
       const ll = getLonLat(r);
       if (!ll) continue;
 
+      const coords: [number, number] = [ll.lon, ll.lat];
+      coordLookup.set(r.id, coords);
+
       const address = [r.addressLine1, r.city, r.state, r.zip].filter(Boolean).join(", ");
       feats.push({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [ll.lon, ll.lat] },
+        geometry: { type: "Point", coordinates: coords },
         properties: {
           id: r.id,
           name: r.name ?? "",
@@ -321,6 +474,8 @@ export default function ResourceFinder() {
         },
       });
     }
+
+    coordByIdRef.current = coordLookup;
     return feats;
   }, [filtered]);
 
@@ -328,105 +483,7 @@ export default function ResourceFinder() {
     return { type: "FeatureCollection", features: mapPoints };
   }, [mapPoints]);
 
-  // ---------- Shared helpers (no “functions after return”) ----------
-  const resetSelectionAndReturnToCA = () => {
-    setSelectedResourceId(null);
-    const map = mapRef.current;
-    if (map) flyToCalifornia(map);
-  };
-
-  const clearSelectedResource = () => {
-    resetSelectionAndReturnToCA();
-  };
-
-  const selectResourceFromMap = (id: string, coords: [number, number]) => {
-    setSelectedResourceId(id);
-
-    const map = mapRef.current;
-    if (map) {
-      map.easeTo({
-        center: coords,
-        zoom: 12,
-        duration: 800,
-        essential: true,
-      });
-    }
-  };
-
-  // ---------- Handlers (clear selection + return to CA on filter changes) ----------
-  const onAudienceChange = (next: Audience) => {
-    setAudience(next);
-    setSelectedResidentServices([]);
-    setSelectedOrgServices([]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const onSearchChange = (next: string) => {
-    setSearchQuery(next);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const toggleCounty = (c: County) => {
-    setSelectedCounties((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const selectAllCounties = () => {
-    setSelectedCounties([...COUNTIES]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const clearCounties = () => {
-    setSelectedCounties([]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const toggleResidentService = (svc: Service) => {
-    setSelectedResidentServices((prev) =>
-      prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
-    );
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const toggleOrgService = (svc: OrgService) => {
-    setSelectedOrgServices((prev) =>
-      prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
-    );
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const selectAllResidentServices = () => {
-    setSelectedResidentServices([...SERVICES]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const clearResidentServices = () => {
-    setSelectedResidentServices([]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const selectAllOrgServices = () => {
-    setSelectedOrgServices([...ORG_SERVICES]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  const clearOrgServices = () => {
-    setSelectedOrgServices([]);
-    setCurrentPage(1);
-    resetSelectionAndReturnToCA();
-  };
-
-  // ---------- Map init (create once; DO NOT setState inside effect) ----------
+  // -------- Map init (one-time, when switching to map) --------
   useEffect(() => {
     if (viewMode !== "map") return;
     if (!mapContainerRef.current) return;
@@ -434,7 +491,6 @@ export default function ResourceFinder() {
 
     const token = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
     if (!token) {
-      // Don't setState inside effect (avoids “cascading renders” warnings)
       console.error("Missing VITE_MAPBOX_TOKEN. Add it to your .env and restart the dev server.");
       return;
     }
@@ -444,34 +500,27 @@ export default function ResourceFinder() {
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      bounds: CA_BOUNDS,
-      fitBoundsOptions: { padding: 50 },
+      center: [-119.4179, 36.7783],
+      zoom: 5,
     });
 
     mapRef.current = map;
-
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
 
-    const ensureTooltip = () => {
-      if (tooltipRef.current) return tooltipRef.current;
-      const tip = new mapboxgl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        maxWidth: "320px",
-        offset: 12,
-      });
-      tooltipRef.current = tip;
-      return tip;
-    };
-
     map.on("load", () => {
-      if (!map.getSource("resources")) {
-        map.addSource("resources", { type: "geojson", data: mapGeoJson });
+      // Initialize to California once
+      flyToCalifornia({ immediate: true });
+
+      if (!map.getSource(MAP_SOURCE_ID)) {
+        map.addSource(MAP_SOURCE_ID, {
+          type: "geojson",
+          data: mapGeoJson,
+        });
 
         map.addLayer({
-          id: "resources-circle",
+          id: MAP_LAYER_ID,
           type: "circle",
-          source: "resources",
+          source: MAP_SOURCE_ID,
           paint: {
             "circle-radius": 6,
             "circle-opacity": 0.85,
@@ -482,18 +531,9 @@ export default function ResourceFinder() {
         });
       }
 
-      // Hover tooltip (not click popup)
-      map.on("mouseenter", "resources-circle", () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-
-      map.on("mouseleave", "resources-circle", () => {
-        map.getCanvas().style.cursor = "";
-        tooltipRef.current?.remove();
-      });
-
-      map.on("mousemove", "resources-circle", (e) => {
-        const f = e.features?.[0];
+      // Hover tooltip (Popup used as tooltip)
+      const showHover = (e: mapboxgl.MapMouseEvent) => {
+        const f = e.features?.[0] as mapboxgl.MapboxGeoJSONFeature | undefined;
         if (!f) return;
 
         const geom = f.geometry as GeoJSON.Point;
@@ -505,7 +545,7 @@ export default function ResourceFinder() {
         const website = String(props.website ?? "");
 
         const html = `
-          <div style="max-width: 300px;">
+          <div style="max-width: 280px;">
             <div style="font-weight: 700; margin-bottom: 4px;">${name}</div>
             ${address ? `<div style="margin-bottom: 6px;">${address}</div>` : ""}
             ${
@@ -516,27 +556,50 @@ export default function ResourceFinder() {
           </div>
         `;
 
-        ensureTooltip().setLngLat(coords).setHTML(html).addTo(map);
+        if (!hoverPopupRef.current) {
+          hoverPopupRef.current = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 10,
+            className: "resource-tooltip",
+          });
+        }
+
+        hoverPopupRef.current.setLngLat(coords).setHTML(html).addTo(map);
+      };
+
+      const hideHover = () => {
+        hoverPopupRef.current?.remove();
+      };
+
+      map.on("mouseenter", MAP_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "pointer";
       });
 
-      // Click => select + zoom to resource + filter side panel
-      map.on("click", "resources-circle", (e) => {
-        const f = e.features?.[0];
+      map.on("mouseleave", MAP_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "";
+        hideHover();
+      });
+
+      map.on("mousemove", MAP_LAYER_ID, showHover);
+
+      // Click: select resource, zoom to it, and filter cards in side panel
+      map.on("click", MAP_LAYER_ID, (e) => {
+        const f = e.features?.[0] as mapboxgl.MapboxGeoJSONFeature | undefined;
         if (!f) return;
 
-        const geom = f.geometry as GeoJSON.Point;
-        const coords = geom.coordinates as [number, number];
         const props = (f.properties ?? {}) as Record<string, unknown>;
         const id = String(props.id ?? "");
-
         if (!id) return;
-        selectResourceFromMap(id, coords);
+
+        setSelectedResourceId(id);
+        flyToResourceId(id);
       });
     });
 
     return () => {
-      tooltipRef.current?.remove();
-      tooltipRef.current = null;
+      hoverPopupRef.current?.remove();
+      hoverPopupRef.current = null;
 
       map.remove();
       mapRef.current = null;
@@ -544,20 +607,33 @@ export default function ResourceFinder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
 
-  // ---------- Map data updates (no zoom logic here; avoids “reload feel”) ----------
+  // -------- Map updates when filters change (NO re-init, NO fitBounds) --------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const src = map.getSource("resources") as mapboxgl.GeoJSONSource | undefined;
+    const src = map.getSource(MAP_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
     if (src) src.setData(mapGeoJson);
   }, [mapGeoJson]);
 
-  // ---------- Early returns ----------
+  // Zoom behavior:
+  // - If selected -> zoom to resource
+  // - If cleared -> zoom back to CA
+  useEffect(() => {
+    if (viewMode !== "map") return;
+
+    if (selectedResourceId) {
+      flyToResourceId(selectedResourceId);
+    } else {
+      flyToCalifornia();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedResourceId, viewMode]);
+
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
-  // ---------- Options ----------
+  // Options
   const audienceOptions: SelectOption<Audience>[] = [
     { value: "Resident", label: "Resident" },
     { value: "Organization", label: "Organization" },
@@ -803,10 +879,7 @@ export default function ResourceFinder() {
               <button
                 type="button"
                 className={`btn w-50 ${viewMode === "list" ? "btn-primary" : "btn-primary-outline"}`}
-                onClick={() => {
-                  setViewMode("list");
-                  setSelectedResourceId(null);
-                }}
+                onClick={() => setViewMode("list")}
               >
                 List
               </button>
@@ -827,7 +900,7 @@ export default function ResourceFinder() {
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
-            {/* Map */}
+            {/* Map: full width on mobile, 8/12 on lg */}
             <div className="col-12 col-lg-8">
               <div className="card">
                 <div className="card-body p-0">
@@ -844,19 +917,16 @@ export default function ResourceFinder() {
               </div>
             </div>
 
-            {/* Side panel */}
+            {/* Side panel: full width on mobile, 4/12 on lg */}
             <div className="col-12 col-lg-4">
               <div className="card" aria-label="Results list">
                 <div className="card-body" style={{ maxHeight: "70vh", overflow: "auto" }}>
-                  {effectiveSelectedId && (
-                    <div className="m-b-sm d-flex align-items-center justify-content-between">
-                      <div className="text-muted" style={{ fontSize: "0.9rem" }}>
-                        Showing <strong>1</strong> selected resource
-                      </div>
+                  {selectedResourceId && (
+                    <div className="m-b-md">
                       <button
                         type="button"
-                        className="btn btn-primary-outline btn-sm"
-                        onClick={clearSelectedResource}
+                        className="btn btn-primary-outline w-100"
+                        onClick={clearSelectionAndZoomOut}
                       >
                         Back to all results
                       </button>
@@ -877,13 +947,30 @@ export default function ResourceFinder() {
                         audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
 
                       return (
-                        <ResourceCard
-                          key={r.id}
-                          resource={r}
-                          servicesToShow={servicesToShow}
-                          servicesLabel={servicesLabel}
-                          freeLowCostToShow={freeLowCostToShow}
-                        />
+                        <div key={r.id}>
+                          <ResourceCard
+                            resource={r}
+                            servicesToShow={servicesToShow}
+                            servicesLabel={servicesLabel}
+                            freeLowCostToShow={freeLowCostToShow}
+                          />
+
+                          {/* Optional: allow clicking card to zoom to it */}
+                          {selectedResourceId === null && (
+                            <div className="m-t-sm">
+                              <button
+                                type="button"
+                                className="btn btn-primary-outline w-100"
+                                onClick={() => {
+                                  setSelectedResourceId(r.id);
+                                  flyToResourceId(r.id);
+                                }}
+                              >
+                                Zoom to this resource
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -893,7 +980,7 @@ export default function ResourceFinder() {
           </div>
         ) : (
           <>
-            {/* List view card grid */}
+            {/* List view: responsive card grid (1 mobile, 2 md, 3 lg) */}
             <div className="row">
               {pageResources.map((r) => {
                 const servicesToShow =
