@@ -6,6 +6,7 @@ import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
 import Pagination from "./Pagination";
+import ViewToggle from "./ViewToggle";
 
 import {
   COUNTIES,
@@ -542,17 +543,11 @@ export default function ResourceFinder() {
 
         const name = String(props.name ?? "");
         const address = String(props.address ?? "");
-        const website = String(props.website ?? "");
 
         const html = `
           <div style="max-width: 280px;">
             <div style="font-weight: 700; margin-bottom: 4px;">${name}</div>
             ${address ? `<div style="margin-bottom: 6px;">${address}</div>` : ""}
-            ${
-              website
-                ? `<div><a href="${website}" target="_blank" rel="noreferrer">Website</a></div>`
-                : ""
-            }
           </div>
         `;
 
@@ -869,34 +864,27 @@ export default function ResourceFinder() {
       <section className="md:mx-36" aria-label="Results">
         <div ref={resultsTopRef} />
 
-        <div className="row g-3 align-items-start align-items-md-center m-b-md">
-          {/* Results summary: 2/3 on desktop, full on mobile */}
-          <div className="col-12 col-md-8">{renderResultsSummary()}</div>
+<div className="row g-3 align-items-start align-items-md-center m-b-md">
+  {/* Results summary: 2/3 on desktop, full on mobile */}
+  <div className="col-12 col-md-8">{renderResultsSummary()}</div>
 
-          {/* Toggle: full-width on mobile, constrained to 3rd column on md+ */}
-          <div className="col-12 col-md-4">
-            <div className="btn-group w-100" role="group" aria-label="View toggle">
-              <button
-                type="button"
-                className={`btn w-50 ${viewMode === "list" ? "btn-primary" : "btn-primary-outline"}`}
-                onClick={() => setViewMode("list")}
-              >
-                List
-              </button>
+  {/* Toggle: full-width on mobile, constrained to 3rd column on md+ */}
+  <div className="col-12 col-md-4">
+    {/* wrapper keeps it full width / right aligned if you want */}
+    <div className="d-flex w-100 justify-content-md-end">
+      <ViewToggle
+        selectedView={viewMode}
+        handleNavigate={(view) => {
+          setViewMode(view);
+          if (view === "map") {
+            resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }}
+      />
+    </div>
+  </div>
+</div>
 
-              <button
-                type="button"
-                className={`btn w-50 ${viewMode === "map" ? "btn-primary" : "btn-primary-outline"}`}
-                onClick={() => {
-                  setViewMode("map");
-                  resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              >
-                Map
-              </button>
-            </div>
-          </div>
-        </div>
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
