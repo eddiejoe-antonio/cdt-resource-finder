@@ -6,6 +6,18 @@ type Row = Record<string, unknown>;
 
 const s = (v: unknown) => (v == null ? "" : String(v)).trim();
 
+function toNumberOrUndefined(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t) return undefined;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 function formatWebsite(url: string) {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -46,6 +58,10 @@ const COL = {
   // Residents use Q9; Organizations use Q13
   chargeResidents: "9. Does your entity/organization charge for its services?",
   chargeOrganizations: "13. Does your entity/organization charge for its services?",
+
+  // ✅ NEW: exact headers in your converted.csv
+  lat: "lat",
+  long: "long",
 } as const;
 
 /**
@@ -70,11 +86,9 @@ function normalizeFreeLowCostFromCharge(v: unknown): "Yes" | "No" | "" {
   const txt = s(v).toLowerCase();
   if (!txt) return "";
 
-  // Typical answers start with Yes./No.
   if (/^\s*no\b/.test(txt)) return "Yes";
   if (/^\s*yes\b/.test(txt)) return "No";
 
-  // Backup heuristics
   if (txt.includes("free of cost") || txt.includes("free")) return "Yes";
   if (txt.includes("charge") || txt.includes("fee") || txt.includes("$")) return "No";
 
@@ -103,9 +117,7 @@ export function mapRowToResource(row: Row, index: number): Resource {
 
   // ✅ Q4: exact header first; fallback to "find the 4. ..." column if exports change
   const q4Key = COL.servicesIndividuals in row ? COL.servicesIndividuals : findKeyStartingWith(row, "4.");
-  const servicesIndividualsRaw = s(
-    (q4Key ? row[q4Key] : undefined) || row["servicesIndividualsRaw"]
-  );
+  const servicesIndividualsRaw = s((q4Key ? row[q4Key] : undefined) || row["servicesIndividualsRaw"]);
   const servicesIndividuals = servicesIndividualsRaw;
 
   const countiesServedRaw = s(row[COL.counties] || row["countiesServedRaw"]);
@@ -121,9 +133,7 @@ export function mapRowToResource(row: Row, index: number): Resource {
   // ✅ Q13 (Organizations) charge? -> invert into Free/Low Cost
   const freeLowCostOrganizationsRaw =
     row[COL.chargeOrganizations] || row["chargeOrganizations"] || row["freeLowCostOrganizations"];
-  const freeLowCostOrganizations = normalizeFreeLowCostFromCharge(
-    freeLowCostOrganizationsRaw
-  );
+  const freeLowCostOrganizations = normalizeFreeLowCostFromCharge(freeLowCostOrganizationsRaw);
 
   // ✅ Q12: find the "12." column (org services)
   const q12Key = findKeyStartingWith(row, "12.");
@@ -132,6 +142,10 @@ export function mapRowToResource(row: Row, index: number): Resource {
       row["servicesOrganizationsRaw"] ||
       row["servicesOrganizations"]
   );
+
+  // ✅ NEW: exact lat/long fields from converted.csv
+  const lat = toNumberOrUndefined(row[COL.lat]);
+  const long = toNumberOrUndefined(row[COL.long]);
 
   return {
     id,
@@ -152,21 +166,20 @@ export function mapRowToResource(row: Row, index: number): Resource {
     orgType: orgType || undefined,
     serviceArea: serviceArea || undefined,
 
-    // Cards can show this as fallback (and ResourceFinder uses servicesIndividualsRaw for filtering)
     servicesIndividuals: servicesIndividuals || undefined,
-
-    // Show-more
     serviceDelivery: serviceDelivery || undefined,
     languages: languages || undefined,
 
-    // ✅ Audience-specific Free/Low Cost
     freeLowCostResidents: freeLowCostResidents || undefined,
     freeLowCostOrganizations: freeLowCostOrganizations || undefined,
 
-    // ResourceFinder filter inputs
     countiesServedRaw: countiesServedRaw || undefined,
     servicesIndividualsRaw: servicesIndividualsRaw || undefined,
     servicesOrganizationsRaw: servicesOrganizationsRaw || undefined,
+
+    // ✅ NEW: map fields
+    lat,
+    long,
   };
 }
 

@@ -37,4 +37,6 @@ export type Resource = {
 
   // Q12 org services
   servicesOrganizationsRaw?: string;
+  lat?: number;
+  long?: number;
 };

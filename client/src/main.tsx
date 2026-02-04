@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 // 1) CA template CSS (core) + optional theme
 import "@cagovweb/state-template/dist/css/cagov.core.css";
