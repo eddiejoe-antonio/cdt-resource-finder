@@ -15,24 +15,41 @@ Also handles:
   - Phone Number.1 .. Phone Number.4 (map to master Phone: fallback Business Phone No:)
   - Q10 special mapping (Yes/No + 10a multi-select)
 
+NEW: FAST Mapbox Geocoding (unique addresses + cache + concurrency)
+  - Adds columns: lat, long
+  - Geocodes resolved address per row (your existing Virtual/Physical/Org resolution)
+  - Skips "Virtual"
+  - Geocodes UNIQUE addresses only, then maps back to rows
+  - Threaded requests for speed
+  - Uses JSON cache for cheap reruns
+
 Usage:
+  export MAPBOX_TOKEN="pk_..."
   python data_conversion.py \
     --master inputs/master_120.csv \
     --template inputs/resources.csv \
     --out outputs/converted.csv \
-    --encoding cp1252
+    --encoding cp1252 \
+    --errors replace \
+    --mapbox-token "$MAPBOX_TOKEN" \
+    --geocode-cache outputs/geocode_cache_mapbox.json \
+    --geocode-workers 16 \
+    --geocode-country US
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 
 import pandas as pd
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 FALSEY = {
@@ -130,7 +147,7 @@ def build_breakout_map(cols: List[str]) -> Dict[str, List[Tuple[str, str]]]:
 
 def combine_breakout(df: pd.DataFrame, cols_opts: List[Tuple[str, str]], joiner: str) -> pd.Series:
     def combine_row(row) -> str:
-        picked = []
+        picked: List[str] = []
         for col, opt in cols_opts:
             if is_selected(row.get(col)):
                 picked.append(opt)
@@ -165,6 +182,87 @@ def find_output_col(out_df: pd.DataFrame, *candidates: str) -> Optional[str]:
     return None
 
 
+# ---------------------------
+# FAST Mapbox geocoding helpers
+# ---------------------------
+
+MAPBOX_ENDPOINT = "https://api.mapbox.com/geocoding/v5/mapbox.places/{query}.json"
+
+
+def _load_json_cache(path: Optional[Path]) -> Dict[str, Dict[str, Optional[float]]]:
+    if path is None or not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        out: Dict[str, Dict[str, Optional[float]]] = {}
+        for k, v in data.items():
+            if isinstance(k, str) and isinstance(v, dict):
+                lat = v.get("lat")
+                lon = v.get("long")
+                out[k] = {
+                    "lat": float(lat) if isinstance(lat, (int, float)) else None,
+                    "long": float(lon) if isinstance(lon, (int, float)) else None,
+                }
+        return out
+    except Exception:
+        return {}
+
+
+def _save_json_cache(path: Optional[Path], cache: Dict[str, Dict[str, Optional[float]]]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def format_address_for_geocode(a1: str, a2: str, city: str, state: str, zip_code: str) -> str:
+    parts = [a1, a2, city, state, zip_code]
+    parts = [str(p).strip() for p in parts if p is not None and str(p).strip()]
+    return ", ".join(parts)
+
+
+def geocode_address_mapbox(
+    address: str,
+    token: str,
+    *,
+    country: str = "US",
+    timeout: int = 20,
+) -> Optional[Tuple[float, float]]:
+    """
+    Returns (lat, lon) or None.
+    Mapbox returns center: [lon, lat]
+    """
+    address = address.strip()
+    if not address:
+        return None
+
+    url = MAPBOX_ENDPOINT.format(query=requests.utils.quote(address, safe=""))
+    params = {
+        "access_token": token,
+        "limit": "1",
+        "country": country,
+        "types": "address,place,poi",
+    }
+    r = requests.get(url, params=params, timeout=timeout)
+    r.raise_for_status()
+    data: Any = r.json()
+
+    feats = data.get("features", [])
+    if not isinstance(feats, list) or not feats:
+        return None
+
+    center = feats[0].get("center")
+    if not (isinstance(center, list) and len(center) >= 2):
+        return None
+
+    lon, lat = center[0], center[1]
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        return float(lat), float(lon)
+    return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--master", required=True, type=Path, help="Path to master_resources.csv")
@@ -176,6 +274,13 @@ def main() -> None:
     # ✅ Fix A: encoding safety
     ap.add_argument("--encoding", default="utf-8", help="Input encoding (utf-8, cp1252, latin1, etc.)")
     ap.add_argument("--errors", default="strict", help="Encoding errors: strict|replace|ignore")
+
+    # ✅ Mapbox geocoding options (optional)
+    ap.add_argument("--mapbox-token", default="", help="Mapbox token (if set, adds lat/long)")
+    ap.add_argument("--geocode-cache", type=Path, default=None, help="JSON cache for geocoding results")
+    ap.add_argument("--geocode-workers", type=int, default=16, help="Thread count for geocoding")
+    ap.add_argument("--geocode-country", default="US", help="Country code filter for geocoding (e.g., US)")
+
     args = ap.parse_args()
 
     if not args.master.exists():
@@ -315,8 +420,6 @@ def main() -> None:
                 continue
 
             # ✅ extra phone-specific fallback:
-            # If the template wants Phone Number.1.. but base doesn’t exist,
-            # use master Phone: then Business Phone No:
             if base_norm == norm_header("Phone Number"):
                 phone_src = None
                 if norm_header("Phone:") in master_norm_to_cols:
@@ -339,7 +442,10 @@ def main() -> None:
         unmatched.append(target_col)
 
     # --- Apply updated address resolution into OUTPUT org address fields ---
-    need_addr = any(c in out_df.columns for c in [ORG_OUT_ADDR1, ORG_OUT_ADDR2, ORG_OUT_CITY, ORG_OUT_STATE, ORG_OUT_ZIP])
+    resolved = None
+    need_addr = any(
+        c in out_df.columns for c in [ORG_OUT_ADDR1, ORG_OUT_ADDR2, ORG_OUT_CITY, ORG_OUT_STATE, ORG_OUT_ZIP]
+    )
     if need_addr:
         def resolve_addr(row: pd.Series) -> Tuple[str, str, str, str, str]:
             if VIRTUAL_COL in row.index and is_selected(row[VIRTUAL_COL]):
@@ -424,13 +530,72 @@ def main() -> None:
 
         out_df[type_out_col] = master.apply(build_type, axis=1)
 
+    # --- FAST Mapbox geocoding (optional) ---
+    out_df["lat"] = ""
+    out_df["long"] = ""
+
+    if args.mapbox_token and resolved is not None:
+        cache = _load_json_cache(args.geocode_cache)
+
+        addr_series = resolved.apply(
+            lambda r: format_address_for_geocode(r["_a1"], r["_a2"], r["_city"], r["_state"], r["_zip"]),
+            axis=1,
+        ).fillna("")
+
+        is_virtual = addr_series.str.strip().str.lower().eq("virtual")
+        addr_series = addr_series.where(~is_virtual, "")
+
+        unique_addrs = sorted({a.strip() for a in addr_series.tolist() if a and a.strip()})
+        to_geocode = [a for a in unique_addrs if a not in cache]
+
+        print(f"[INFO] Geocoding unique addresses: {len(unique_addrs):,}")
+        print(f"[INFO] Cache hits: {len(unique_addrs) - len(to_geocode):,}")
+        print(f"[INFO] Cache misses: {len(to_geocode):,} (workers={args.geocode_workers})")
+
+        def worker(addr: str) -> Tuple[str, Optional[Tuple[float, float]]]:
+            try:
+                res = geocode_address_mapbox(addr, args.mapbox_token, country=args.geocode_country)
+                return addr, res
+            except Exception:
+                return addr, None
+
+        if to_geocode:
+            done = 0
+            with ThreadPoolExecutor(max_workers=max(1, args.geocode_workers)) as ex:
+                futures = [ex.submit(worker, a) for a in to_geocode]
+                for fut in as_completed(futures):
+                    addr, res = fut.result()
+                    if res is not None:
+                        lat, lon = res
+                        cache[addr] = {"lat": float(lat), "long": float(lon)}
+                    else:
+                        cache[addr] = {"lat": None, "long": None}
+
+                    done += 1
+                    if args.geocode_cache and done % 50 == 0:
+                        _save_json_cache(args.geocode_cache, cache)
+                        print(f"[INFO] Geocoded {done:,}/{len(to_geocode):,}")
+
+            _save_json_cache(args.geocode_cache, cache)
+
+        def get_lat(addr: str) -> str:
+            v = cache.get(addr)
+            return "" if not v or v.get("lat") is None else str(v["lat"])
+
+        def get_lon(addr: str) -> str:
+            v = cache.get(addr)
+            return "" if not v or v.get("long") is None else str(v["long"])
+
+        out_df["lat"] = addr_series.map(lambda a: get_lat(a.strip()) if isinstance(a, str) else "")
+        out_df["long"] = addr_series.map(lambda a: get_lon(a.strip()) if isinstance(a, str) else "")
+
     # Write output
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out_df.to_csv(args.out, index=False)
 
     print(f"[OK] Wrote: {args.out}")
     print(f"[INFO] Rows: {len(out_df):,}")
-    print(f"[INFO] Columns (template): {out_df.shape[1]:,}")
+    print(f"[INFO] Columns (template + lat/long): {out_df.shape[1]:,}")
 
     if unmatched:
         print(f"[WARN] Unmatched template columns filled as blank ({len(unmatched)}):")
