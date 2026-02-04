@@ -1,5 +1,6 @@
 // src/components/ResourceFinder.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import mapboxgl, { type LngLatBoundsLike } from "mapbox-gl";
 import type { Resource } from "../types/resourceTypes";
 import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
@@ -28,6 +29,7 @@ import {
 const ITEMS_PER_PAGE = 12;
 
 type Audience = "Resident" | "Organization";
+type ViewMode = "list" | "map";
 
 type IndexedResource = Resource & {
   countiesSet: Set<County>;
@@ -42,10 +44,44 @@ function normalizeSearch(s: string) {
   return s.trim().toLowerCase();
 }
 
+function getLonLat(r: Resource): { lon: number; lat: number } | null {
+  const lat = r.lat;
+  const lon = r.long;
+
+  if (typeof lat !== "number" || typeof lon !== "number") return null;
+  if (lat < -90 || lat > 90) return null;
+  if (lon < -180 || lon > 180) return null;
+
+  return { lat, lon };
+}
+
+type ResourceFeatureProps = {
+  id: string;
+  name: string;
+  address: string;
+  website: string;
+};
+
+type ResourceFeature = {
+  type: "Feature";
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
+  properties: ResourceFeatureProps;
+};
+
+type ResourceFeatureCollection = {
+  type: "FeatureCollection";
+  features: ResourceFeature[];
+};
+
 export default function ResourceFinder() {
   const [allResources, setAllResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
+
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
@@ -54,11 +90,16 @@ export default function ResourceFinder() {
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
-  // Pagination
+  // Pagination (list view only)
   const [currentPage, setCurrentPage] = useState(1);
 
   // Scroll target for paging
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
+
+  // Map refs
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     fetchResourcesLocal()
@@ -127,16 +168,6 @@ export default function ResourceFinder() {
   const clearOrgServices = () => {
     setSelectedOrgServices([]);
     setCurrentPage(1);
-  };
-
-  const clearAllFilters = () => {
-    setAudience("Resident");
-    setSearchQuery("");
-    setSelectedCounties([]);
-    setSelectedResidentServices([]);
-    setSelectedOrgServices([]);
-    setCurrentPage(1);
-    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // Index once for fast filtering
@@ -237,6 +268,7 @@ export default function ResourceFinder() {
     selectedOrgServices,
   ]);
 
+  // List mode pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
 
@@ -305,6 +337,150 @@ export default function ResourceFinder() {
 
     return <p className="m-0">{parts}</p>;
   };
+
+  // -------- Map data (uses ALL filtered results) --------
+  const mapPoints = useMemo<ResourceFeature[]>(() => {
+    const feats: ResourceFeature[] = [];
+
+    for (const r of filtered) {
+      const ll = getLonLat(r);
+      if (!ll) continue;
+
+      const address = [r.addressLine1, r.city, r.state, r.zip].filter(Boolean).join(", ");
+      feats.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [ll.lon, ll.lat] },
+        properties: {
+          id: r.id,
+          name: r.name ?? "",
+          address,
+          website: r.website ?? "",
+        },
+      });
+    }
+
+    return feats;
+  }, [filtered]);
+
+  const mapGeoJson = useMemo<ResourceFeatureCollection>(() => {
+    return { type: "FeatureCollection", features: mapPoints };
+  }, [mapPoints]);
+
+  // -------- Map init (one-time, when switching to map) --------
+  useEffect(() => {
+    if (viewMode !== "map") return;
+    if (!mapContainerRef.current) return;
+    if (mapRef.current) return;
+
+    const token = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+    if (!token) {
+      console.error("Missing VITE_MAPBOX_TOKEN. Add it to your .env and restart the dev server.");
+      return;
+    }
+
+    mapboxgl.accessToken = token;
+
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [-119.4179, 36.7783], // CA fallback
+      zoom: 5,
+    });
+
+    mapRef.current = map;
+
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+
+    map.on("load", () => {
+      if (!map.getSource("resources")) {
+        map.addSource("resources", {
+          type: "geojson",
+          data: mapGeoJson,
+        });
+
+        map.addLayer({
+          id: "resources-circle",
+          type: "circle",
+          source: "resources",
+          paint: {
+            "circle-radius": 6,
+            "circle-opacity": 0.85,
+            "circle-stroke-width": 1,
+          },
+        });
+      }
+
+      map.on("click", "resources-circle", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+
+        const geom = f.geometry as GeoJSON.Point;
+        const coords = geom.coordinates as [number, number];
+        const props = (f.properties ?? {}) as Record<string, unknown>;
+
+        const name = String(props.name ?? "");
+        const address = String(props.address ?? "");
+        const website = String(props.website ?? "");
+
+        popupRef.current?.remove();
+
+        const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
+          .setLngLat(coords)
+          .setHTML(
+            `
+            <div style="max-width: 280px;">
+              <div style="font-weight: 700; margin-bottom: 4px;">${name}</div>
+              ${address ? `<div style="margin-bottom: 6px;">${address}</div>` : ""}
+              ${
+                website
+                  ? `<div><a href="${website}" target="_blank" rel="noreferrer">Website</a></div>`
+                  : ""
+              }
+            </div>
+          `
+          )
+          .addTo(map);
+
+        popupRef.current = popup;
+      });
+
+      map.on("mouseenter", "resources-circle", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "resources-circle", () => {
+        map.getCanvas().style.cursor = "";
+      });
+
+      if (mapPoints.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of mapPoints) bounds.extend(f.geometry.coordinates);
+        map.fitBounds(bounds as unknown as LngLatBoundsLike, { padding: 50, maxZoom: 12 });
+      }
+    });
+
+    return () => {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      map.remove();
+      mapRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
+
+  // -------- Map updates when filters change --------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const src = map.getSource("resources") as mapboxgl.GeoJSONSource | undefined;
+    if (src) src.setData(mapGeoJson);
+
+    if (mapPoints.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+      for (const f of mapPoints) bounds.extend(f.geometry.coordinates);
+      map.fitBounds(bounds as unknown as LngLatBoundsLike, { padding: 50, maxZoom: 12 });
+    }
+  }, [mapGeoJson, mapPoints]);
 
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
@@ -406,7 +582,12 @@ export default function ResourceFinder() {
 
                   <div
                     className="d-flex w-100"
-                    style={{ alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, position: "relative" }}
+                    style={{
+                      alignItems: "stretch",
+                      flexWrap: "nowrap",
+                      minWidth: 0,
+                      position: "relative",
+                    }}
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement | null;
                       const isInput = target?.id === "search";
@@ -494,7 +675,11 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
+                      />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -534,47 +719,137 @@ export default function ResourceFinder() {
 
       {/* Results */}
       <section className="md:mx-36" aria-label="Results">
-        <div ref={resultsTopRef} />
+<div ref={resultsTopRef} />
 
-        <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
-          <div className="flex-grow-1">{renderResultsSummary()}</div>
+<div className="row g-3 align-items-start align-items-md-center m-b-md">
+  {/* Results summary: 2/3 on desktop, full on mobile */}
+  <div className="col-12 col-md-8">
+    {renderResultsSummary()}
+  </div>
 
-          <button
-            type="button"
-            className="btn btn-primary-outline flex-shrink-0 text-nowrap"
-            onClick={clearAllFilters}
-          >
-            Clear all
-          </button>
-        </div>
+  {/* Toggle: full-width on mobile, constrained to 3rd column on md+ */}
+  <div className="col-12 col-md-4">
+    <div
+      className="btn-group w-100"
+      role="group"
+      aria-label="View toggle"
+    >
+      <button
+        type="button"
+        className={`btn w-50 w-md-auto ${
+          viewMode === "list" ? "btn-primary" : "btn-primary-outline"
+        }`}
+        onClick={() => setViewMode("list")}
+      >
+        List
+      </button>
 
-        <div className="row">
-          {pageResources.map((r) => {
-            const servicesToShow =
-              audience === "Resident"
-                ? Array.from(r.servicesSet).map((s) => labelForService(s))
-                : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
+      <button
+        type="button"
+        className={`btn w-50 w-md-auto ${
+          viewMode === "map" ? "btn-primary" : "btn-primary-outline"
+        }`}
+        onClick={() => {
+          setViewMode("map");
+          resultsTopRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }}
+      >
+        Map
+      </button>
+    </div>
+  </div>
+</div>
 
-            const servicesLabel =
-              audience === "Resident" ? "Services" : "Supports / services for organizations";
 
-            const freeLowCostToShow =
-              audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
-
-            return (
-              <div key={r.id} className="col-md-6 col-lg-4 m-b-md">
-                <ResourceCard
-                  resource={r}
-                  servicesToShow={servicesToShow}
-                  servicesLabel={servicesLabel}
-                  freeLowCostToShow={freeLowCostToShow}
-                />
+        {viewMode === "map" ? (
+          // ✅ Responsive: stack on mobile, 2-col on lg+
+          <div className="row g-3 align-items-start">
+            {/* Map: full width on mobile, 8/12 on lg */}
+            <div className="col-12 col-lg-8">
+              <div className="card">
+                <div className="card-body p-0">
+                  <div
+                    ref={mapContainerRef}
+                    style={{
+                      width: "100%",
+                      height: "70vh",
+                      minHeight: "420px",
+                      borderRadius: "4px",
+                    }}
+                  />
+                </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
 
-        <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={onPageChange} />
+            {/* Side panel: full width on mobile, 4/12 on lg */}
+            <div className="col-12 col-lg-4">
+              <div className="card" aria-label="Results list">
+                <div className="card-body" style={{ maxHeight: "70vh", overflow: "auto" }}>
+                  <div className="d-flex flex-column gap-3">
+                    {filtered.map((r) => {
+                      const servicesToShow =
+                        audience === "Resident"
+                          ? Array.from(r.servicesSet).map((s) => labelForService(s))
+                          : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
+
+                      const servicesLabel =
+                        audience === "Resident"
+                          ? "Services"
+                          : "Supports / services for organizations";
+
+                      const freeLowCostToShow =
+                        audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
+
+                      return (
+                        <ResourceCard
+                          key={r.id}
+                          resource={r}
+                          servicesToShow={servicesToShow}
+                          servicesLabel={servicesLabel}
+                          freeLowCostToShow={freeLowCostToShow}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ✅ Keep your existing responsive card grid: 1 on mobile, 2 on md, 3 on lg */}
+            <div className="row">
+              {pageResources.map((r) => {
+                const servicesToShow =
+                  audience === "Resident"
+                    ? Array.from(r.servicesSet).map((s) => labelForService(s))
+                    : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
+
+                const servicesLabel =
+                  audience === "Resident" ? "Services" : "Supports / services for organizations";
+
+                const freeLowCostToShow =
+                  audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
+
+                return (
+                  <div key={r.id} className="col-12 col-md-6 col-lg-4 m-b-md">
+                    <ResourceCard
+                      resource={r}
+                      servicesToShow={servicesToShow}
+                      servicesLabel={servicesLabel}
+                      freeLowCostToShow={freeLowCostToShow}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={onPageChange} />
+          </>
+        )}
       </section>
     </div>
   );
