@@ -30,6 +30,7 @@ const ITEMS_PER_PAGE = 12;
 
 type Audience = "Resident" | "Organization";
 type ViewMode = "list" | "map";
+
 type IndexedResource = Resource & {
   countiesSet: Set<County>;
   servicesSet: Set<Service>;
@@ -39,30 +40,10 @@ type IndexedResource = Resource & {
   hasOrgServices: boolean;
 };
 
-type PointFeature = {
-  type: "Feature";
-  geometry: { type: "Point"; coordinates: [number, number] }; // [lon, lat]
-  properties: {
-    id: string;
-    name: string;
-    address: string;
-    website: string;
-  };
-};
-
-type FeatureCollection = {
-  type: "FeatureCollection";
-  features: PointFeature[];
-};
-
 function normalizeSearch(s: string) {
   return s.trim().toLowerCase();
 }
 
-/**
- * Canonical coordinates ONLY:
- * expects r.lat and r.long to exist in the loaded CSV.
- */
 function getLonLat(r: Resource): { lon: number; lat: number } | null {
   const lat = r.lat;
   const lon = r.long;
@@ -74,20 +55,26 @@ function getLonLat(r: Resource): { lon: number; lat: number } | null {
   return { lat, lon };
 }
 
+type ResourceFeatureProps = {
+  id: string;
+  name: string;
+  address: string;
+  website: string;
+};
 
-function safeString(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  return String(v);
-}
+type ResourceFeature = {
+  type: "Feature";
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
+  properties: ResourceFeatureProps;
+};
 
-function escapeHtml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+type ResourceFeatureCollection = {
+  type: "FeatureCollection";
+  features: ResourceFeature[];
+};
 
 export default function ResourceFinder() {
   const [allResources, setAllResources] = useState<Resource[]>([]);
@@ -103,20 +90,16 @@ export default function ResourceFinder() {
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
-  // Pagination
+  // Pagination (list view only)
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Scroll target
+  // Scroll target for paging
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
   // Map refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
-  const mapLoadedRef = useRef(false);
-
-  // IMPORTANT: compute token once (no setState from effects)
-  const mapboxToken = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined) ?? "";
 
   useEffect(() => {
     fetchResourcesLocal()
@@ -187,17 +170,7 @@ export default function ResourceFinder() {
     setCurrentPage(1);
   };
 
-  const clearAllFilters = () => {
-    setAudience("Resident");
-    setSearchQuery("");
-    setSelectedCounties([]);
-    setSelectedResidentServices([]);
-    setSelectedOrgServices([]);
-    setCurrentPage(1);
-    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  // Index once
+  // Index once for fast filtering
   const indexedResources = useMemo<IndexedResource[]>(() => {
     const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
     const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
@@ -260,6 +233,7 @@ export default function ResourceFinder() {
 
       if (!matchesSearch) return false;
 
+      // Counties: if any selected, require intersection
       if (selectedCounties.length > 0) {
         const ok = selectedCounties.some((c) => r.countiesSet.has(c));
         if (!ok) return false;
@@ -294,6 +268,7 @@ export default function ResourceFinder() {
     selectedOrgServices,
   ]);
 
+  // List mode pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
 
@@ -363,44 +338,52 @@ export default function ResourceFinder() {
     return <p className="m-0">{parts}</p>;
   };
 
-  // Map features (ALL filtered, not paginated)
-  const mapPoints = useMemo<PointFeature[]>(() => {
-    const out: PointFeature[] = [];
+  // -------- Map data (uses ALL filtered results) --------
+  const mapPoints = useMemo<ResourceFeature[]>(() => {
+    const feats: ResourceFeature[] = [];
+
     for (const r of filtered) {
       const ll = getLonLat(r);
       if (!ll) continue;
 
-      out.push({
+      const address = [r.addressLine1, r.city, r.state, r.zip].filter(Boolean).join(", ");
+      feats.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: [ll.lon, ll.lat] },
         properties: {
           id: r.id,
           name: r.name ?? "",
-          address: [r.addressLine1, r.city, r.state, r.zip].filter(Boolean).join(", "),
+          address,
           website: r.website ?? "",
         },
       });
     }
-    return out;
+
+    return feats;
   }, [filtered]);
 
-  const mapGeoJson = useMemo<FeatureCollection>(() => {
+  const mapGeoJson = useMemo<ResourceFeatureCollection>(() => {
     return { type: "FeatureCollection", features: mapPoints };
   }, [mapPoints]);
 
-  // Map init (only when viewMode === "map" AND token exists)
+  // -------- Map init (one-time, when switching to map) --------
   useEffect(() => {
     if (viewMode !== "map") return;
-    if (!mapboxToken) return; // no setState here
     if (!mapContainerRef.current) return;
     if (mapRef.current) return;
 
-    mapboxgl.accessToken = mapboxToken;
+    const token = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+    if (!token) {
+      console.error("Missing VITE_MAPBOX_TOKEN. Add it to your .env and restart the dev server.");
+      return;
+    }
+
+    mapboxgl.accessToken = token;
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [-119.4179, 36.7783],
+      center: [-119.4179, 36.7783], // CA fallback
       zoom: 5,
     });
 
@@ -409,45 +392,40 @@ export default function ResourceFinder() {
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
 
     map.on("load", () => {
-      mapLoadedRef.current = true;
+      if (!map.getSource("resources")) {
+        map.addSource("resources", {
+          type: "geojson",
+          data: mapGeoJson,
+        });
 
-      map.addSource("resources", {
-        type: "geojson",
-        data: mapGeoJson,
-      });
-
-      map.addLayer({
-        id: "resources-circle",
-        type: "circle",
-        source: "resources",
-        paint: {
-          "circle-radius": 6,
-          "circle-opacity": 0.85,
-          "circle-stroke-width": 1,
-          // IMPORTANT: set fill so points are visible on all basemaps
-          "circle-color": "#1f2576",
-          "circle-stroke-color": "#ffffff",
-        },
-      });
+        map.addLayer({
+          id: "resources-circle",
+          type: "circle",
+          source: "resources",
+          paint: {
+            "circle-radius": 6,
+            "circle-opacity": 0.85,
+            "circle-stroke-width": 1,
+          },
+        });
+      }
 
       map.on("click", "resources-circle", (e) => {
-        const feature = (e.features?.[0] as mapboxgl.MapboxGeoJSONFeature | undefined) ?? undefined;
-        if (!feature) return;
+        const f = e.features?.[0];
+        if (!f) return;
 
-        const geom = feature.geometry as GeoJSON.Point;
-        const coords = geom.coordinates;
-        if (!Array.isArray(coords) || coords.length < 2) return;
+        const geom = f.geometry as GeoJSON.Point;
+        const coords = geom.coordinates as [number, number];
+        const props = (f.properties ?? {}) as Record<string, unknown>;
 
-        const props = (feature.properties ?? {}) as Record<string, unknown>;
-
-        const name = escapeHtml(safeString(props.name));
-        const address = escapeHtml(safeString(props.address));
-        const website = safeString(props.website);
+        const name = String(props.name ?? "");
+        const address = String(props.address ?? "");
+        const website = String(props.website ?? "");
 
         popupRef.current?.remove();
 
         const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
-          .setLngLat(coords as [number, number])
+          .setLngLat(coords)
           .setHTML(
             `
             <div style="max-width: 280px;">
@@ -455,9 +433,7 @@ export default function ResourceFinder() {
               ${address ? `<div style="margin-bottom: 6px;">${address}</div>` : ""}
               ${
                 website
-                  ? `<div><a href="${escapeHtml(
-                      website
-                    )}" target="_blank" rel="noreferrer">Website</a></div>`
+                  ? `<div><a href="${website}" target="_blank" rel="noreferrer">Website</a></div>`
                   : ""
               }
             </div>
@@ -475,7 +451,6 @@ export default function ResourceFinder() {
         map.getCanvas().style.cursor = "";
       });
 
-      // Initial fit
       if (mapPoints.length > 0) {
         const bounds = new mapboxgl.LngLatBounds();
         for (const f of mapPoints) bounds.extend(f.geometry.coordinates);
@@ -484,20 +459,18 @@ export default function ResourceFinder() {
     });
 
     return () => {
-      mapLoadedRef.current = false;
       popupRef.current?.remove();
       popupRef.current = null;
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, mapboxToken]);
+  }, [viewMode]);
 
-  // Map updates when filters change
+  // -------- Map updates when filters change --------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (!mapLoadedRef.current) return;
 
     const src = map.getSource("resources") as mapboxgl.GeoJSONSource | undefined;
     if (src) src.setData(mapGeoJson);
@@ -512,6 +485,7 @@ export default function ResourceFinder() {
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
+  // Options
   const audienceOptions: SelectOption<Audience>[] = [
     { value: "Resident", label: "Resident" },
     { value: "Organization", label: "Organization" },
@@ -531,8 +505,6 @@ export default function ResourceFinder() {
     value: s,
     label: labelForOrgService(s),
   }));
-
-  const showMissingTokenError = viewMode === "map" && !mapboxToken;
 
   return (
     <div className="container-fluid">
@@ -610,7 +582,12 @@ export default function ResourceFinder() {
 
                   <div
                     className="d-flex w-100"
-                    style={{ alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, position: "relative" }}
+                    style={{
+                      alignItems: "stretch",
+                      flexWrap: "nowrap",
+                      minWidth: 0,
+                      position: "relative",
+                    }}
                     onKeyDown={(e) => {
                       const target = e.target as HTMLElement | null;
                       const isInput = target?.id === "search";
@@ -698,7 +675,11 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
+                      />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -738,69 +719,108 @@ export default function ResourceFinder() {
 
       {/* Results */}
       <section className="md:mx-36" aria-label="Results">
-        <div ref={resultsTopRef} />
+<div ref={resultsTopRef} />
 
-        <div className="d-flex align-items-start justify-content-between m-b-md gap-3">
-          <div className="flex-grow-1">{renderResultsSummary()}</div>
+<div className="row g-3 align-items-start align-items-md-center m-b-md">
+  {/* Results summary: 2/3 on desktop, full on mobile */}
+  <div className="col-12 col-md-8">
+    {renderResultsSummary()}
+  </div>
 
-          <div className="d-flex gap-2 flex-shrink-0">
-            <div className="btn-group" role="group" aria-label="View toggle">
-              <button
-                type="button"
-                className={`btn ${viewMode === "list" ? "btn-primary" : "btn-primary-outline"}`}
-                onClick={() => setViewMode("list")}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                className={`btn ${viewMode === "map" ? "btn-primary" : "btn-primary-outline"}`}
-                onClick={() => {
-                  setViewMode("map");
-                  resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              >
-                Map
-              </button>
-            </div>
+  {/* Toggle: full-width on mobile, constrained to 3rd column on md+ */}
+  <div className="col-12 col-md-4">
+    <div
+      className="btn-group w-100"
+      role="group"
+      aria-label="View toggle"
+    >
+      <button
+        type="button"
+        className={`btn w-50 w-md-auto ${
+          viewMode === "list" ? "btn-primary" : "btn-primary-outline"
+        }`}
+        onClick={() => setViewMode("list")}
+      >
+        List
+      </button>
 
-            <button
-              type="button"
-              className="btn btn-primary-outline text-nowrap"
-              onClick={clearAllFilters}
-            >
-              Clear all
-            </button>
-          </div>
-        </div>
+      <button
+        type="button"
+        className={`btn w-50 w-md-auto ${
+          viewMode === "map" ? "btn-primary" : "btn-primary-outline"
+        }`}
+        onClick={() => {
+          setViewMode("map");
+          resultsTopRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }}
+      >
+        Map
+      </button>
+    </div>
+  </div>
+</div>
+
 
         {viewMode === "map" ? (
-          <div className="card m-b-md">
-            <div className="card-body p-0">
-              {showMissingTokenError ? (
-                <div className="p-4 text-red-700">
-                  Missing <code>VITE_MAPBOX_TOKEN</code>. Add it to your <code>.env</code> and restart the dev server.
+          // ✅ Responsive: stack on mobile, 2-col on lg+
+          <div className="row g-3 align-items-start">
+            {/* Map: full width on mobile, 8/12 on lg */}
+            <div className="col-12 col-lg-8">
+              <div className="card">
+                <div className="card-body p-0">
+                  <div
+                    ref={mapContainerRef}
+                    style={{
+                      width: "100%",
+                      height: "70vh",
+                      minHeight: "420px",
+                      borderRadius: "4px",
+                    }}
+                  />
                 </div>
-              ) : (
-                <div
-                  ref={mapContainerRef}
-                  style={{
-                    width: "100%",
-                    height: "70vh",
-                    minHeight: "520px",
-                    borderRadius: "4px",
-                  }}
-                />
-              )}
+              </div>
+            </div>
 
-              <div className="p-3 text-muted" style={{ fontSize: "0.9rem" }}>
-                Mapped results: <strong>{mapPoints.length}</strong> (requires <code>lat</code> and{" "}
-                <code>long</code> on each row).
+            {/* Side panel: full width on mobile, 4/12 on lg */}
+            <div className="col-12 col-lg-4">
+              <div className="card" aria-label="Results list">
+                <div className="card-body" style={{ maxHeight: "70vh", overflow: "auto" }}>
+                  <div className="d-flex flex-column gap-3">
+                    {filtered.map((r) => {
+                      const servicesToShow =
+                        audience === "Resident"
+                          ? Array.from(r.servicesSet).map((s) => labelForService(s))
+                          : Array.from(r.orgServicesSet).map((s) => labelForOrgService(s));
+
+                      const servicesLabel =
+                        audience === "Resident"
+                          ? "Services"
+                          : "Supports / services for organizations";
+
+                      const freeLowCostToShow =
+                        audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
+
+                      return (
+                        <ResourceCard
+                          key={r.id}
+                          resource={r}
+                          servicesToShow={servicesToShow}
+                          servicesLabel={servicesLabel}
+                          freeLowCostToShow={freeLowCostToShow}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         ) : (
           <>
+            {/* ✅ Keep your existing responsive card grid: 1 on mobile, 2 on md, 3 on lg */}
             <div className="row">
               {pageResources.map((r) => {
                 const servicesToShow =
@@ -815,7 +835,7 @@ export default function ResourceFinder() {
                   audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
 
                 return (
-                  <div key={r.id} className="col-md-6 col-lg-4 m-b-md">
+                  <div key={r.id} className="col-12 col-md-6 col-lg-4 m-b-md">
                     <ResourceCard
                       resource={r}
                       servicesToShow={servicesToShow}
