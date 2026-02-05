@@ -8,3 +8,10 @@
   width: 50%;                 /* underline length */
   background-color: var(--secondary-color); /* CA orange */
 }
+/* Hide the banner iframe that can push the page down */
+.goog-te-banner-frame.skiptranslate {
+  display: none !important;
+}
+body {
+  top: 0 !important;
+}
