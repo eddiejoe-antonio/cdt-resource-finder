@@ -16,39 +16,26 @@ function normalizeLang(raw: string) {
 }
 
 function setGoogTransCookie(targetLang: string) {
-  // Google expects /<source>/<target>
   const value = `/${PAGE_LANG}/${targetLang}`;
 
-  // Works in most iframe cases; some browsers may block third-party cookies.
-  document.cookie = `googtrans=${value}; path=/; SameSite=Lax`;
-  document.cookie = `googtrans=${value}; path=/`; // compatibility
-}
-
-function getGoogTransCookieValue(): string | null {
-  const entry = document.cookie
-    .split("; ")
-    .find((c) => c.toLowerCase().startsWith("googtrans="));
-  if (!entry) return null;
-
-  const [, v] = entry.split("=");
-  return v ?? null;
+  // ✅ For cross-site iframe, you generally need SameSite=None; Secure
+  // (Chrome blocks third-party cookies without it.)
+  document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
+  document.cookie = `googtrans=${value}; path=/`; // fallback for older behavior
 }
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
-  // Existing data load
   useEffect(() => {
     fetchResourcesLocal()
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  // ✅ Receive language changes from WordPress parent
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      // Security: lock to your WP origin only
       if (e.origin !== PARENT_ORIGIN) return;
 
       const data = e.data as ParentMsg;
@@ -57,18 +44,12 @@ export default function App() {
 
       const nextLang = normalizeLang(String(data.lang ?? PAGE_LANG));
 
-      // Set cookie and reload to apply translation reliably
-      const before = getGoogTransCookieValue();
-      setGoogTransCookie(nextLang);
-      const after = getGoogTransCookieValue();
+      console.log("[iframe] received language from parent:", nextLang);
 
-      // Reload regardless — Google DOM translation is more consistent after reload
-      // (If cookies are blocked, reload won't help; see note below.)
-      if (before !== after) {
-        window.location.reload();
-      } else {
-        window.location.reload();
-      }
+      setGoogTransCookie(nextLang);
+
+      // Reload so Google Translate applies on a clean DOM
+      window.location.reload();
     }
 
     window.addEventListener("message", onMessage);
@@ -80,9 +61,6 @@ export default function App() {
 
   return (
     <div>
-      {/* Hidden target for Google Translate to initialize into */}
-      <div id="google_translate_element" style={{ display: "none" }} />
-
       <ResourceFinder />
     </div>
   );
