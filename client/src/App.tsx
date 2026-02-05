@@ -15,27 +15,37 @@ function normalizeLang(raw: string) {
   return lang || PAGE_LANG;
 }
 
+function getCookie(name: string): string | null {
+  const hit = document.cookie
+    .split("; ")
+    .find((c) => c.toLowerCase().startsWith(name.toLowerCase() + "="));
+  return hit ? hit.split("=")[1] ?? null : null;
+}
+
 function setGoogTransCookie(targetLang: string) {
   const value = `/${PAGE_LANG}/${targetLang}`;
 
-  // ✅ For cross-site iframe, you generally need SameSite=None; Secure
-  // (Chrome blocks third-party cookies without it.)
+  // Try the modern flags first (needed for 3rd-party iframe cookies in many cases)
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
-  document.cookie = `googtrans=${value}; path=/`; // fallback for older behavior
+  // Fallback (older behavior)
+  document.cookie = `googtrans=${value}; path=/`;
 }
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
+  // Existing data load
   useEffect(() => {
     fetchResourcesLocal()
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
+  // Receive language changes from WordPress parent
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      // Security: only accept messages from your WP host
       if (e.origin !== PARENT_ORIGIN) return;
 
       const data = e.data as ParentMsg;
@@ -44,11 +54,26 @@ export default function App() {
 
       const nextLang = normalizeLang(String(data.lang ?? PAGE_LANG));
 
-      console.log("[iframe] received language from parent:", nextLang);
-
+      // Set cookie
       setGoogTransCookie(nextLang);
 
-      // Reload so Google Translate applies on a clean DOM
+      // Check whether cookie actually stuck (3rd-party iframe cookies often blocked)
+      const cookieAfter = getCookie("googtrans");
+
+      // Tell parent what happened so it can fall back to proxy URL if needed
+      window.parent.postMessage(
+        {
+          type: "IFRAME_TRANSLATE_ACK",
+          receivedLang: nextLang,
+          cookieAfter, // null/empty means blocked
+        },
+        PARENT_ORIGIN
+      );
+
+      // If cookie didn't stick, reloading won't help — parent will fall back.
+      if (!cookieAfter) return;
+
+      // Reload so Google Translate applies cleanly
       window.location.reload();
     }
 
