@@ -1,4 +1,3 @@
-import { MapIcon, TableCellsIcon } from "@heroicons/react/24/outline";
 import React, { useRef } from "react";
 
 export type ViewMode = "list" | "map";
@@ -31,9 +30,9 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate })
     "flex flex-1 items-center justify-center px-4 py-2 rounded-full border " +
     "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#1E79C8]";
 
-  const selectedClasses = "bg-[#1E79C8] text-white border-white";
-  const unselectedClasses =
-    "bg-[#EEF7FF] text-[#092940] border-[#3B75A9] md:hover:bg-[#3892E1] md:hover:text-white";
+  const selectedClasses = "bg-[#066b99] text-white border-white";
+const unselectedClasses =
+  "bg-[#ecf1f3] border-[#3B75A9] md:hover:bg-[#066b99] md:hover:text-white";
 
   return (
     <div
@@ -50,8 +49,8 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate })
         tabIndex={0} // ✅ both are tabbable
         className={`${baseClasses} ${selectedView === "map" ? selectedClasses : unselectedClasses}`}
       >
-        <MapIcon className="w-6 h-6 mr-2" aria-hidden="true" />
-        Map View
+        <span className="ca-gov-icon-road-pin m-r-sm" aria-hidden="true" />
+        <span>Map View</span>
       </button>
 
       <button
@@ -62,8 +61,8 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate })
         tabIndex={0} // ✅ both are tabbable
         className={`${baseClasses} ${selectedView === "list" ? selectedClasses : unselectedClasses}`}
       >
-        <TableCellsIcon className="w-6 h-6 mr-2" aria-hidden="true" />
-        Tabular View
+        <span className="ca-gov-icon-table m-r-sm" aria-hidden="true" />
+        <span>Table View</span>
       </button>
 
       <span className="sr-only" aria-live="polite">

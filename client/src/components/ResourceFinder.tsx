@@ -681,7 +681,7 @@ export default function ResourceFinder() {
       </header>
 
       {/* Filters */}
-      <section className="m-b-lg bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
+      <section className="m-b-md bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
         <form onSubmit={(e) => e.preventDefault()} className="card md:mx-36">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
