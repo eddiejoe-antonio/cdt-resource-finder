@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 
@@ -24,16 +24,17 @@ function getCookie(name: string): string | null {
 
 function setGoogTransCookie(targetLang: string) {
   const value = `/${PAGE_LANG}/${targetLang}`;
-
-  // Try the modern flags first (needed for 3rd-party iframe cookies in many cases)
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
-  // Fallback (older behavior)
   document.cookie = `googtrans=${value}; path=/`;
 }
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
+
+  // ---- Height bridge: throttle state ----
+  const heightTimerRef = useRef<number | null>(null);
+  const lastHeightRef = useRef<number>(0);
 
   // Existing data load
   useEffect(() => {
@@ -42,10 +43,9 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Receive language changes from WordPress parent
+  // ✅ 1) WordPress translate messages (keep as-is)
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      // Security: only accept messages from your WP host
       if (e.origin !== PARENT_ORIGIN) return;
 
       const data = e.data as ParentMsg;
@@ -53,32 +53,77 @@ export default function App() {
       if (data.type !== "PARENT_GOOGLE_TRANSLATE_LANG") return;
 
       const nextLang = normalizeLang(String(data.lang ?? PAGE_LANG));
-
-      // Set cookie
       setGoogTransCookie(nextLang);
 
-      // Check whether cookie actually stuck (3rd-party iframe cookies often blocked)
       const cookieAfter = getCookie("googtrans");
 
-      // Tell parent what happened so it can fall back to proxy URL if needed
       window.parent.postMessage(
-        {
-          type: "IFRAME_TRANSLATE_ACK",
-          receivedLang: nextLang,
-          cookieAfter, // null/empty means blocked
-        },
+        { type: "IFRAME_TRANSLATE_ACK", receivedLang: nextLang, cookieAfter },
         PARENT_ORIGIN
       );
 
-      // If cookie didn't stick, reloading won't help — parent will fall back.
       if (!cookieAfter) return;
-
-      // Reload so Google Translate applies cleanly
       window.location.reload();
     }
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  // ✅ 2) Iframe auto-height (new)
+  useEffect(() => {
+    // Only run when embedded (optional, but keeps console quieter when opening app directly)
+    const isEmbedded = window.parent !== window;
+    if (!isEmbedded) return;
+
+    function measureHeight(): number {
+      // Use the largest of a few candidates
+      const docEl = document.documentElement;
+      const body = document.body;
+
+      return Math.max(
+        docEl?.scrollHeight ?? 0,
+        docEl?.offsetHeight ?? 0,
+        body?.scrollHeight ?? 0,
+        body?.offsetHeight ?? 0
+      );
+    }
+
+    function postHeightNow() {
+      const h = measureHeight();
+
+      // Avoid spamming if height hasn't meaningfully changed
+      if (Math.abs(h - lastHeightRef.current) < 8) return;
+      lastHeightRef.current = h;
+
+      window.parent.postMessage({ type: "IFRAME_HEIGHT", height: h }, PARENT_ORIGIN);
+    }
+
+    function schedulePostHeight() {
+      if (heightTimerRef.current != null) window.clearTimeout(heightTimerRef.current);
+      heightTimerRef.current = window.setTimeout(() => {
+        postHeightNow();
+        heightTimerRef.current = null;
+      }, 80);
+    }
+
+    // Initial measurement (after first paint + a short settle)
+    schedulePostHeight();
+    const settle = window.setTimeout(schedulePostHeight, 400);
+
+    // Resize changes
+    window.addEventListener("resize", schedulePostHeight);
+
+    // DOM changes (filters/pagination, map toggle, etc.)
+    const obs = new MutationObserver(schedulePostHeight);
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      window.clearTimeout(settle);
+      if (heightTimerRef.current != null) window.clearTimeout(heightTimerRef.current);
+      window.removeEventListener("resize", schedulePostHeight);
+      obs.disconnect();
+    };
   }, []);
 
   if (loading) return <div className="p-4">Loading…</div>;
