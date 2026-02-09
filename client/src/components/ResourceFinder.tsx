@@ -23,7 +23,7 @@ import {
 } from "../static/filters";
 
 import { SingleSelect, type SelectOption } from "./SingleSelect";
-import { MultiSelect } from "./Multiselect";
+import { MultiSelect } from "./MultiSelect";
 
 const ITEMS_PER_PAGE = 12;  
 
