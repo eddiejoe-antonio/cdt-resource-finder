@@ -7,6 +7,7 @@ import { fetchResourcesLocal } from "../utils/fetchResources";
 import { ResourceCard } from "./ResourceCard";
 import Pagination from "./Pagination";
 import ViewToggle from "./ViewToggle";
+import { Tooltip } from "./Tooltip";
 
 import {
   COUNTIES,
@@ -21,14 +22,11 @@ import {
   labelForOrgService,
 } from "../static/filters";
 
-import {
-  PortalMultiSelect,
-  PortalSingleSelect,
-  type MultiSelectOption,
-  type SelectOption,
-} from "./PortalSelects";
+import { SingleSelect, type SelectOption } from "./SingleSelect";
 
-const ITEMS_PER_PAGE = 12;
+import { MultiSelect } from "./Multiselect";
+
+const ITEMS_PER_PAGE = 12;  
 
 type Audience = "Resident" | "Organization";
 type ViewMode = "list" | "map";
@@ -75,7 +73,7 @@ type ResourceFeatureCollection = {
   features: ResourceFeature[];
 };
 
-// California “nice” extent (rough bbox)
+// California "nice" extent (rough bbox)
 const CA_BOUNDS: mapboxgl.LngLatBoundsLike = [
   [-124.48, 32.53], // SW
   [-114.13, 42.01], // NE
@@ -115,7 +113,7 @@ export default function ResourceFinder() {
   // Keep a coordinate lookup so click -> zoom works without re-querying
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
 
-  // ----- Map helper fns (kept ABOVE return; no “functions after return”) -----
+  // ----- Map helper fns (kept ABOVE return; no "functions after return") -----
   const flyToCalifornia = (opts?: { immediate?: boolean }) => {
     const map = mapRef.current;
     if (!map) return;
@@ -188,7 +186,9 @@ export default function ResourceFinder() {
   };
 
   const toggleCounty = (c: County) => {
-    setSelectedCounties((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    setSelectedCounties((prev) =>
+      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+    );
     setCurrentPage(1);
 
     setSelectedResourceId(null);
@@ -305,7 +305,6 @@ export default function ResourceFinder() {
       includeScore: true,
       shouldSort: true,
 
-      // Tune: lower = stricter, higher = fuzzier
       threshold: 0.35,
       distance: 200,
       ignoreLocation: true,
@@ -364,15 +363,7 @@ export default function ResourceFinder() {
 
       return true;
     });
-  }, [
-    indexedResources,
-    fuse,
-    searchQuery,
-    audience,
-    selectedCounties,
-    selectedResidentServices,
-    selectedOrgServices,
-  ]);
+  }, [indexedResources, fuse, searchQuery, audience, selectedCounties, selectedResidentServices, selectedOrgServices]);
 
   // In map mode: if a resource is selected, side panel shows ONLY that one
   const sidePanelResources = useMemo(() => {
@@ -634,17 +625,17 @@ export default function ResourceFinder() {
     { value: "Organization", label: "Organization" },
   ];
 
-  const countyOptions: MultiSelectOption<County>[] = COUNTIES.map((c) => ({
+  const countyOptions = COUNTIES.map((c) => ({
     value: c,
     label: `${c} County`,
   }));
 
-  const residentOptions: MultiSelectOption<Service>[] = SERVICES.map((s) => ({
+  const residentOptions = SERVICES.map((s) => ({
     value: s,
     label: labelForService(s),
   }));
 
-  const orgOptions: MultiSelectOption<OrgService>[] = ORG_SERVICES.map((s) => ({
+  const orgOptions = ORG_SERVICES.map((s) => ({
     value: s,
     label: labelForOrgService(s),
   }));
@@ -682,13 +673,18 @@ export default function ResourceFinder() {
 
       {/* Filters */}
       <section className="m-b-md bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
-        <form onSubmit={(e) => e.preventDefault()} className="card md:mx-36">
+        <div className="card md:mx-36">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
               <div className="col-12 col-lg-6">
-                <PortalSingleSelect
+                <SingleSelect
                   id="audience-select"
-                  label="I am a/an..."
+                  labelNode={
+                    <>
+                      <span>I am a/an...</span>
+                      <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
+                    </>
+                  }
                   placeholder="Select audience"
                   options={audienceOptions}
                   value={audience}
@@ -697,16 +693,20 @@ export default function ResourceFinder() {
               </div>
 
               <div className="col-12 col-lg-6 m-b-sm">
-                <PortalMultiSelect
+                <MultiSelect
                   id="county-multiselect"
-                  label="I am located in... (select all that apply)"
+                  labelNode={
+                    <>
+                      <span>I am located in... (select all that apply)</span>
+                      <Tooltip text="Select one or more counties to filter results. Clear to show resources across California." />
+                    </>
+                  }
                   placeholder="Any county"
                   options={countyOptions}
                   selected={selectedCounties}
                   onToggle={(val) => toggleCounty(val as County)}
                   onSelectAll={selectAllCounties}
                   onClear={clearCounties}
-                  closeOnClear={true}
                 />
               </div>
             </div>
@@ -714,8 +714,9 @@ export default function ResourceFinder() {
             {/* Row 2 */}
             <div className="row m-t-md">
               <div className="col-12 col-lg-6 m-b-sm">
-                <label className="form-label" htmlFor="search">
-                  I am seeking the following service...
+                <label className="form-label d-inline-flex align-items-center" htmlFor="search">
+                  <span>I am seeking the following service...</span>
+                  <Tooltip text="Search is fuzzy and looks across organization name, services, counties served, and other key fields." />
                 </label>
 
                 <div className="pos-rel text-normal">
@@ -818,11 +819,7 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
-                      />
+                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -830,12 +827,23 @@ export default function ResourceFinder() {
               </div>
 
               <div className="col-12 col-lg-6 m-b-sm">
-                <PortalMultiSelect
+                <MultiSelect
                   id="services-multiselect"
-                  label={
-                    audience === "Resident"
-                      ? "Services that include (select all that apply)"
-                      : "Support that includes (select all that apply)"
+                  labelNode={
+                    <>
+                      <span>
+                        {audience === "Resident"
+                          ? "Services that include (select all that apply)"
+                          : "Support that includes (select all that apply)"}
+                      </span>
+                      <Tooltip
+                        text={
+                          audience === "Resident"
+                            ? "Select services you need as a resident. Results match any selected service."
+                            : "Select supports your organization needs. Results match any selected support."
+                        }
+                      />
+                    </>
                   }
                   placeholder="All services"
                   options={audience === "Resident" ? residentOptions : orgOptions}
@@ -852,43 +860,37 @@ export default function ResourceFinder() {
                     if (audience === "Resident") clearResidentServices();
                     else clearOrgServices();
                   }}
-                  closeOnClear={true}
                 />
               </div>
             </div>
           </div>
-        </form>
+        </div>
       </section>
 
       {/* Results */}
       <section className="md:mx-36" aria-label="Results">
         <div ref={resultsTopRef} />
 
-<div className="row g-3 align-items-start align-items-md-center m-b-md">
-  {/* Results summary: 2/3 on desktop, full on mobile */}
-  <div className="col-12 col-md-8">{renderResultsSummary()}</div>
+        <div className="row g-3 align-items-start align-items-md-center m-b-md">
+          <div className="col-12 col-md-8">{renderResultsSummary()}</div>
 
-  {/* Toggle: full-width on mobile, constrained to 3rd column on md+ */}
-  <div className="col-12 col-md-4">
-    {/* wrapper keeps it full width / right aligned if you want */}
-    <div className="d-flex w-100 justify-content-md-end">
-      <ViewToggle
-        selectedView={viewMode}
-        handleNavigate={(view) => {
-          setViewMode(view);
-          if (view === "map") {
-            resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        }}
-      />
-    </div>
-  </div>
-</div>
-
+          <div className="col-12 col-md-4">
+            <div className="d-flex w-100 justify-content-md-end">
+              <ViewToggle
+                selectedView={viewMode}
+                handleNavigate={(view) => {
+                  setViewMode(view);
+                  if (view === "map") {
+                    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
-            {/* Map: full width on mobile, 8/12 on lg */}
             <div className="col-12 col-lg-8">
               <div className="card">
                 <div className="card-body p-0">
@@ -905,7 +907,6 @@ export default function ResourceFinder() {
               </div>
             </div>
 
-            {/* Side panel: full width on mobile, 4/12 on lg */}
             <div className="col-12 col-lg-4">
               <div className="card" aria-label="Results list">
                 <div className="card-body" style={{ maxHeight: "70vh", overflow: "auto" }}>
@@ -943,7 +944,6 @@ export default function ResourceFinder() {
                             freeLowCostToShow={freeLowCostToShow}
                           />
 
-                          {/* Optional: allow clicking card to zoom to it */}
                           {selectedResourceId === null && (
                             <div className="m-t-sm">
                               <button
@@ -968,7 +968,6 @@ export default function ResourceFinder() {
           </div>
         ) : (
           <>
-            {/* List view: responsive card grid (1 mobile, 2 md, 3 lg) */}
             <div className="row">
               {pageResources.map((r) => {
                 const servicesToShow =

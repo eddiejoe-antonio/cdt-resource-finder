@@ -11,6 +11,7 @@ export type MultiSelectOption<T extends string> = { value: T; label: string };
 export function PortalSingleSelect<T extends string>({
   id,
   label,
+  labelNode,
   placeholder,
   options,
   value,
@@ -18,6 +19,7 @@ export function PortalSingleSelect<T extends string>({
 }: {
   id: string;
   label: string;
+  labelNode?: React.ReactNode;
   placeholder: string;
   options: readonly SelectOption<T>[];
   value: T | "";
@@ -27,10 +29,7 @@ export function PortalSingleSelect<T extends string>({
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [open, setOpen] = useState(false);
-  const pos = useAnchoredPortal(
-    open,
-    btnRef as unknown as React.RefObject<HTMLElement>
-  );
+  const pos = useAnchoredPortal(open, btnRef as unknown as React.RefObject<HTMLElement>);
 
   const currentLabel = useMemo(() => {
     if (!value) return "";
@@ -57,9 +56,7 @@ export function PortalSingleSelect<T extends string>({
     const idx = Math.max(0, options.findIndex((o) => o.value === value));
     const t = window.setTimeout(() => {
       const buttons =
-        menuRef.current?.querySelectorAll<HTMLButtonElement>(
-          'button[data-opt="true"]'
-        ) ?? [];
+        menuRef.current?.querySelectorAll<HTMLButtonElement>('button[data-opt="true"]') ?? [];
       buttons[idx]?.focus();
     }, 0);
     return () => window.clearTimeout(t);
@@ -80,9 +77,7 @@ export function PortalSingleSelect<T extends string>({
       className="bg-white border rounded-md shadow-sm"
       onKeyDown={(e) => {
         const buttons = Array.from(
-          menuRef.current?.querySelectorAll<HTMLButtonElement>(
-            'button[data-opt="true"]'
-          ) ?? []
+          menuRef.current?.querySelectorAll<HTMLButtonElement>('button[data-opt="true"]') ?? []
         );
 
         const active = document.activeElement as HTMLElement | null;
@@ -161,7 +156,7 @@ export function PortalSingleSelect<T extends string>({
   return (
     <div>
       <label id={`${id}-label`} className="form-label" htmlFor={id}>
-        {label}
+        <span className="d-inline-flex align-items-center">{labelNode ?? label}</span>
       </label>
 
       <button
@@ -211,6 +206,7 @@ export function PortalSingleSelect<T extends string>({
 export function PortalMultiSelect<T extends string>({
   id,
   label,
+  labelNode,
   placeholder = "Select...",
   options,
   selected,
@@ -221,6 +217,7 @@ export function PortalMultiSelect<T extends string>({
 }: {
   id: string;
   label: string;
+  labelNode?: React.ReactNode;
   placeholder?: string;
   options: readonly MultiSelectOption<T>[];
   selected: readonly T[];
@@ -234,14 +231,10 @@ export function PortalMultiSelect<T extends string>({
   const selectAllRef = useRef<HTMLButtonElement | null>(null);
 
   const [open, setOpen] = useState(false);
-  const pos = useAnchoredPortal(
-    open,
-    btnRef as unknown as React.RefObject<HTMLElement>
-  );
+  const pos = useAnchoredPortal(open, btnRef as unknown as React.RefObject<HTMLElement>);
 
   const selectedCount = selected.length;
-  const buttonText =
-    selectedCount === 0 ? placeholder : `${selectedCount} selected`;
+  const buttonText = selectedCount === 0 ? placeholder : `${selectedCount} selected`;
 
   useEffect(() => {
     if (!open) return;
@@ -335,9 +328,7 @@ export function PortalMultiSelect<T extends string>({
       <div className="p-3" style={{ maxHeight: 320, overflow: "auto" }}>
         {options.map((opt) => {
           const checked = selected.includes(opt.value);
-          const checkboxId = `${id}-${opt.value
-            .replace(/\s+/g, "-")
-            .toLowerCase()}`;
+          const checkboxId = `${id}-${opt.value.replace(/\s+/g, "-").toLowerCase()}`;
 
           return (
             <label
@@ -378,7 +369,7 @@ export function PortalMultiSelect<T extends string>({
   return (
     <div>
       <label id={`${id}-label`} className="form-label" htmlFor={id}>
-        {label}
+        <span className="d-inline-flex align-items-center">{labelNode ?? label}</span>
       </label>
 
       <button
@@ -398,10 +389,7 @@ export function PortalMultiSelect<T extends string>({
         }}
         style={{ minHeight: 44, fontSize: "1rem" }}
       >
-        <span
-          className={selectedCount === 0 ? "text-muted" : ""}
-          style={{ fontSize: "1rem" }}
-        >
+        <span className={selectedCount === 0 ? "text-muted" : ""} style={{ fontSize: "1rem" }}>
           {buttonText}
         </span>
 
