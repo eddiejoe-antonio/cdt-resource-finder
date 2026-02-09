@@ -94,6 +94,12 @@ export default function ResourceFinder() {
   const [selectedCounties, setSelectedCounties] = useState<County[]>([]);
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
+  
+  // Sorting
+  type SortMode = "alphabetical" | "proximity";
+  const [sortMode, setSortMode] = useState<SortMode>("alphabetical");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [locationError, setLocationError] = useState<string>("");
 
   // Selection (map mode side-panel filtering)
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
@@ -154,6 +160,61 @@ export default function ResourceFinder() {
   const clearSelectionAndZoomOut = () => {
     setSelectedResourceId(null);
     flyToCalifornia();
+  };
+
+  // -------------------------------------------------------------------------
+
+  // Request user location
+  const requestLocation = () => {
+    setLocationError("");
+    
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation is not supported by your browser");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+        });
+        setSortMode("proximity");
+      },
+      (error) => {
+        let message = "Unable to retrieve your location";
+        if (error.code === error.PERMISSION_DENIED) {
+          message = "Location permission denied. Please enable location access.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          message = "Location information unavailable.";
+        } else if (error.code === error.TIMEOUT) {
+          message = "Location request timed out.";
+        }
+        setLocationError(message);
+        setSortMode("alphabetical");
+      }
+    );
+  };
+
+  // Calculate distance between two points (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const onSortModeChange = (mode: SortMode) => {
+    if (mode === "proximity" && !userLocation) {
+      requestLocation();
+    } else {
+      setSortMode(mode);
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -375,10 +436,60 @@ export default function ResourceFinder() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
 
+  // Sort resources based on sort mode (optimized)
+  const sortedFiltered = useMemo(() => {
+    const sorted = [...filtered];
+    
+    if (sortMode === "proximity" && userLocation) {
+      // Pre-calculate distances once
+      const withDistances = sorted.map(r => {
+        const loc = getLonLat(r);
+        const distance = loc 
+          ? calculateDistance(userLocation.lat, userLocation.lon, loc.lat, loc.lon)
+          : Infinity;
+        return { resource: r, distance };
+      });
+      
+      // Sort by pre-calculated distance
+      withDistances.sort((a, b) => a.distance - b.distance);
+      
+      return withDistances.map(item => item.resource);
+    } else {
+      // Sort alphabetically by name
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    
+    return sorted;
+  }, [filtered, sortMode, userLocation]);
+
+  // Sort side panel resources for map view
+  const sortedSidePanelResources = useMemo(() => {
+    if (selectedResourceId) return sidePanelResources; // Don't sort when single resource selected
+    
+    const sorted = [...sidePanelResources];
+    
+    if (sortMode === "proximity" && userLocation) {
+      const withDistances = sorted.map(r => {
+        const loc = getLonLat(r);
+        const distance = loc 
+          ? calculateDistance(userLocation.lat, userLocation.lon, loc.lat, loc.lon)
+          : Infinity;
+        return { resource: r, distance };
+      });
+      
+      withDistances.sort((a, b) => a.distance - b.distance);
+      return withDistances.map(item => item.resource);
+    } else {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    
+    return sorted;
+  }, [sidePanelResources, sortMode, userLocation, selectedResourceId]);
+
   const pageResources = useMemo(() => {
     const start = (safePage - 1) * ITEMS_PER_PAGE;
-    return filtered.slice(start, start + ITEMS_PER_PAGE);
-  }, [filtered, safePage]);
+    return sortedFiltered.slice(start, start + ITEMS_PER_PAGE);
+  }, [sortedFiltered, safePage]);
 
   const onPageChange = (page: number) => {
     const clamped = Math.max(1, Math.min(totalPages, page));
@@ -639,6 +750,11 @@ export default function ResourceFinder() {
     label: labelForOrgService(s),
   }));
 
+  const sortOptions: SelectOption<SortMode>[] = [
+    { value: "alphabetical", label: "A-Z" },
+    { value: "proximity", label: "By proximity" },
+  ];
+
   return (
     <div className="container-fluid">
       {/* Header */}
@@ -871,10 +987,19 @@ export default function ResourceFinder() {
         <div ref={resultsTopRef} />
 
         <div className="row g-3 align-items-start align-items-md-center m-b-md">
-          <div className="col-12 col-md-8">{renderResultsSummary()}</div>
+          <div className="col-12 col-md-6">{renderResultsSummary()}</div>
 
-          <div className="col-12 col-md-4">
-            <div className="d-flex w-100 justify-content-md-end">
+          <div className="col-12 col-md-6">
+            <div className="d-flex gap-2 justify-content-md-end align-items-center flex-wrap">
+              <div style={{ minWidth: '160px' }}>
+                <SingleSelect
+                  id="sort-select"
+                  placeholder="Sort by"
+                  options={sortOptions}
+                  value={sortMode}
+                  onChange={(v) => onSortModeChange(v)}
+                />
+              </div>
               <ViewToggle
                 selectedView={viewMode}
                 handleNavigate={(view) => {
@@ -885,6 +1010,11 @@ export default function ResourceFinder() {
                 }}
               />
             </div>
+            {locationError && (
+              <div className="text-danger text-end mt-1" style={{ fontSize: '0.875rem' }}>
+                {locationError}
+              </div>
+            )}
           </div>
         </div>
 
@@ -922,7 +1052,7 @@ export default function ResourceFinder() {
                   )}
 
                   <div className="d-flex flex-column gap-3">
-                    {sidePanelResources.map((r) => {
+                    {sortedSidePanelResources.map((r) => {
                       const servicesToShow =
                         audience === "Resident"
                           ? Array.from(r.servicesSet).map((s) => labelForService(s))
