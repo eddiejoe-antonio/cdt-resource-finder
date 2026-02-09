@@ -23,7 +23,6 @@ import {
 } from "../static/filters";
 
 import { SingleSelect, type SelectOption } from "./SingleSelect";
-
 import { MultiSelect } from "./Multiselect";
 
 const ITEMS_PER_PAGE = 12;  
@@ -704,7 +703,7 @@ export default function ResourceFinder() {
                   placeholder="Any county"
                   options={countyOptions}
                   selected={selectedCounties}
-                  onToggle={(val) => toggleCounty(val as County)}
+                  onToggle={(val: County) => toggleCounty(val)}
                   onSelectAll={selectAllCounties}
                   onClear={clearCounties}
                 />
@@ -848,7 +847,7 @@ export default function ResourceFinder() {
                   placeholder="All services"
                   options={audience === "Resident" ? residentOptions : orgOptions}
                   selected={audience === "Resident" ? selectedResidentServices : selectedOrgServices}
-                  onToggle={(val) => {
+                  onToggle={(val: Service | OrgService) => {
                     if (audience === "Resident") toggleResidentService(val as Service);
                     else toggleOrgService(val as OrgService);
                   }}
