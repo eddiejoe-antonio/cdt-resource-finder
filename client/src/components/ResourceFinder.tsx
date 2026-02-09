@@ -170,6 +170,7 @@ export default function ResourceFinder() {
     
     if (!navigator.geolocation) {
       setLocationError("Geolocation is not supported by your browser");
+      setSortMode("alphabetical");
       return;
     }
 
@@ -179,7 +180,7 @@ export default function ResourceFinder() {
           lat: position.coords.latitude,
           lon: position.coords.longitude,
         });
-        setSortMode("proximity");
+        // Sort mode will stay as "proximity" since we set it in onSortModeChange
       },
       (error) => {
         let message = "Unable to retrieve your location";
@@ -210,8 +211,11 @@ export default function ResourceFinder() {
   };
 
   const onSortModeChange = (mode: SortMode) => {
-    if (mode === "proximity" && !userLocation) {
-      requestLocation();
+    if (mode === "proximity") {
+      setSortMode("proximity"); // Set immediately
+      if (!userLocation) {
+        requestLocation();
+      }
     } else {
       setSortMode(mode);
     }
