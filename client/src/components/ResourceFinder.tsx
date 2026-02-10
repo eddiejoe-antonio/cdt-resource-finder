@@ -86,7 +86,7 @@ export default function ResourceFinder() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("map");
 
   // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
@@ -705,7 +705,7 @@ export default function ResourceFinder() {
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
+  }, [viewMode, mapGeoJson]);
 
   // -------- Map updates when filters change (NO re-init, NO fitBounds) --------
   useEffect(() => {
