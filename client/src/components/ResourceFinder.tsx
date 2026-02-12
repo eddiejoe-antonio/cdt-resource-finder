@@ -810,7 +810,7 @@ export default function ResourceFinder() {
 
       {/* Filters */}
       <section className="m-b-md bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
-        <div className="card md:mx-36">
+        <div className="card md:mx-36 mb-0">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
               <div className="col-12 col-lg-6">
