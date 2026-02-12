@@ -31,6 +31,13 @@ function setGoogTransCookie(targetLang: string) {
   document.cookie = `googtrans=${value}; path=/`;
 }
 
+// Extend Window interface to include our custom properties
+declare global {
+  interface Window {
+    _heightTimer?: ReturnType<typeof setTimeout>;
+  }
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -81,51 +88,48 @@ export default function App() {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  // NEW: Send height to parent WordPress page to eliminate double scrollbars
+  // Send height to parent WordPress page to eliminate double scrollbars
   useEffect(() => {
-// In your useEffect that sends height, replace the sendHeight function with:
-function sendHeight() {
-  // Give the DOM a moment to settle after changes
-  requestAnimationFrame(() => {
-    const height = Math.max(
-      document.body.scrollHeight,
-      document.documentElement.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.offsetHeight,
-      document.getElementById('root')?.scrollHeight || 0
-    );
+    function sendHeight() {
+      // Get the actual content height
+      const height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      );
 
-    window.parent.postMessage(
-      {
-        type: "IFRAME_HEIGHT",
-        height: height + 20, // Add small buffer for safety
-      },
-      PARENT_ORIGIN
-    );
-  });
-}
+      window.parent.postMessage(
+        { type: "IFRAME_HEIGHT", height: height },
+        PARENT_ORIGIN
+      );
+    }
 
-    // Send height on load
-    sendHeight();
+    // Send on load (multiple times to catch different render stages)
+    setTimeout(sendHeight, 100);
+    setTimeout(sendHeight, 500);
+    setTimeout(sendHeight, 1500);
 
-    // Send height when window resizes
+    // Send on window resize
     window.addEventListener("resize", sendHeight);
 
-    // Send height when content changes (for dynamic content like filters, map toggling)
-    const observer = new MutationObserver(sendHeight);
+    // Watch for DOM changes (filters, view toggle, etc.)
+    const observer = new MutationObserver(() => {
+      if (window._heightTimer) {
+        clearTimeout(window._heightTimer);
+      }
+      window._heightTimer = setTimeout(sendHeight, 200);
+    });
+
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true,
     });
-
-    // Also check periodically (for animations, lazy-loaded content, map rendering)
-    const interval = setInterval(sendHeight, 1000);
 
     return () => {
       window.removeEventListener("resize", sendHeight);
       observer.disconnect();
-      clearInterval(interval);
+      if (window._heightTimer) {
+        clearTimeout(window._heightTimer);
+      }
     };
   }, []);
 
