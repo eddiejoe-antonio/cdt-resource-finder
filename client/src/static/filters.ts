@@ -168,6 +168,7 @@ export function labelForService(svc: Service): string {
 export function labelForOrgService(svc: OrgService): string {
   return ORG_SERVICE_DISPLAY_LABELS[svc] ?? svc;
 }
+
 /* ======================================================
    SERVICE DELIVERY (Q8 filter)
 ====================================================== */
@@ -180,12 +181,37 @@ export const SERVICE_DELIVERY_OPTIONS = [
 
 export type ServiceDeliveryFilter = (typeof SERVICE_DELIVERY_OPTIONS)[number];
 
-export function normalizeServiceDeliveryFlags(raw?: string): {
+/**
+ * ✅ UPDATED: Now accepts address parameter to handle "Virtual" address logic
+ * 
+ * When address is "Virtual", the organization is considered virtual-only:
+ * - hasVirtual: true
+ * - hasInPerson: false
+ * 
+ * This ensures virtual-only orgs don't appear in "Either Virtually or In-Person" filter
+ */
+export function normalizeServiceDeliveryFlags(
+  raw?: string,
+  address?: string
+): {
   hasInPerson: boolean;
   hasVirtual: boolean;
 } {
   const t = (raw ?? "").toLowerCase();
+  const addr = (address ?? "").toLowerCase().trim();
+  
+  // Check if address is "Virtual"
+  const addressIsVirtual = addr === "virtual";
+  
+  // Check service delivery flags from the serviceDelivery field
   const hasInPerson = t.includes("in-person") || t.includes("in person");
   const hasVirtual = t.includes("virtually") || t.includes("virtual");
+  
+  // If address is "Virtual", force virtual-only (no in-person option)
+  // This prevents the org from showing in "Either Virtually or In-Person"
+  if (addressIsVirtual) {
+    return { hasInPerson: false, hasVirtual: true };
+  }
+  
   return { hasInPerson, hasVirtual };
 }
