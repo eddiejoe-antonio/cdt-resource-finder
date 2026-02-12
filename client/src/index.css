@@ -9,15 +9,20 @@
   background-color: var(--secondary-color); /* CA orange */
 }
 
-/* Let the iframe content expand naturally without internal scrollbar */
+/* Force no scrollbar on html/body in iframe */
 html {
-    overflow-y: visible;
-    overflow-x: hidden;
+  overflow: hidden !important;
+  height: auto !important;
 }
 
 body {
-    overflow: visible;
-    margin: 0;
-    padding: 0;
-    min-height: 100vh; /* Allow it to be taller than viewport */
+  overflow: visible !important;
+  height: auto !important;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  overflow: visible !important;
+  height: auto !important;
 }
