@@ -1090,14 +1090,14 @@ export default function ResourceFinder() {
               <div className="card">
                 <div className="card-body p-0">
                   <div
-                  ref={mapContainerRef}
-                  style={{
-                    width: "100%",
-                    height: "600px", /* Fixed height instead of 70vh */
-                    minHeight: "420px",
-                    borderRadius: "4px",
-                  }}
-                />
+                    ref={mapContainerRef}
+                    style={{
+                      width: "100%",
+                      height: "70vh",
+                      minHeight: "420px",
+                      borderRadius: "4px",
+                    }}
+                  />
                 </div>
               </div>
             </div>
