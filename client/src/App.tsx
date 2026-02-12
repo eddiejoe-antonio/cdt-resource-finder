@@ -38,39 +38,43 @@ export default function App() {
   );
 
   /* -------------------------------------------------------
-     AUTO IFRAME HEIGHT POSTMESSAGE
+     AUTO IFRAME HEIGHT POSTMESSAGE (MutationObserver version)
      ------------------------------------------------------- */
   useEffect(() => {
-    let timeout: number | null = null;
+    let resizeTimeout: number | undefined;
 
     function sendHeight() {
-      if (timeout) window.clearTimeout(timeout);
+      const height =
+        document.documentElement.scrollHeight || document.body.scrollHeight;
 
-      timeout = window.setTimeout(() => {
-        const height =
-          document.documentElement.scrollHeight ||
-          document.body.scrollHeight;
-
-        window.parent?.postMessage(
-          { type: "setHeight", height },
-          PARENT_ORIGIN
-        );
-      }, 50); // debounce prevents message spam
+      window.parent?.postMessage({ type: "setHeight", height }, PARENT_ORIGIN);
     }
 
+    function scheduleHeightUpdate() {
+      if (resizeTimeout) window.clearTimeout(resizeTimeout);
+      resizeTimeout = window.setTimeout(sendHeight, 100); // runs once after changes settle
+    }
+
+    // initial
     sendHeight();
 
-    window.addEventListener("resize", sendHeight);
+    // resize -> debounced
+    window.addEventListener("resize", scheduleHeightUpdate);
     window.addEventListener("load", sendHeight);
 
-    const observer = new ResizeObserver(sendHeight);
-    observer.observe(document.body);
+    // MutationObserver -> debounced
+    const observer = new MutationObserver(scheduleHeightUpdate);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
 
     return () => {
-      window.removeEventListener("resize", sendHeight);
+      window.removeEventListener("resize", scheduleHeightUpdate);
       window.removeEventListener("load", sendHeight);
       observer.disconnect();
-      if (timeout) window.clearTimeout(timeout);
+      if (resizeTimeout) window.clearTimeout(resizeTimeout);
     };
   }, [renderStateKey]);
 
@@ -118,9 +122,6 @@ export default function App() {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  /* -------------------------------------------------------
-     UI STATES
-     ------------------------------------------------------- */
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
