@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 
-const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
+const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.gov";
 const PAGE_LANG = "en";
 
 type ParentMsg =
@@ -79,6 +79,49 @@ export default function App() {
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  // NEW: Send height to parent WordPress page to eliminate double scrollbars
+  useEffect(() => {
+    function sendHeight() {
+      const height = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.offsetHeight
+      );
+
+      window.parent.postMessage(
+        {
+          type: "IFRAME_HEIGHT",
+          height: height,
+        },
+        PARENT_ORIGIN
+      );
+    }
+
+    // Send height on load
+    sendHeight();
+
+    // Send height when window resizes
+    window.addEventListener("resize", sendHeight);
+
+    // Send height when content changes (for dynamic content like filters, map toggling)
+    const observer = new MutationObserver(sendHeight);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+
+    // Also check periodically (for animations, lazy-loaded content, map rendering)
+    const interval = setInterval(sendHeight, 1000);
+
+    return () => {
+      window.removeEventListener("resize", sendHeight);
+      observer.disconnect();
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) return <div className="p-4">Loading…</div>;
