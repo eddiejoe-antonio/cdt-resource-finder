@@ -32,7 +32,7 @@ export default function Pagination({
             >
               <button
                 type="button"
-                className="btn btn-primary-outline"
+                className="btn btn-outline-primary"
                 disabled={currentPage <= 1}
                 onClick={() => onPageChange(clamp(currentPage - 1))}
               >
@@ -45,7 +45,7 @@ export default function Pagination({
 
               <button
                 type="button"
-                className="btn btn-primary-outline"
+                className="btn btn-outline-primary"
                 disabled={currentPage >= totalPages}
                 onClick={() => onPageChange(clamp(currentPage + 1))}
               >
