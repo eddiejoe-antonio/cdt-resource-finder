@@ -1,5 +1,5 @@
 // src/components/ResourceFinder.tsx
-import React, {
+import {
   useCallback,
   useDeferredValue,
   useEffect,
