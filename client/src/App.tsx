@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 
-const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.gov";
+const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
 const PAGE_LANG = "en";
 
 type ParentMsg =
@@ -29,13 +29,6 @@ function setGoogTransCookie(targetLang: string) {
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
   // Fallback (older behavior)
   document.cookie = `googtrans=${value}; path=/`;
-}
-
-// Extend Window interface to include our custom properties
-declare global {
-  interface Window {
-    _heightTimer?: ReturnType<typeof setTimeout>;
-  }
 }
 
 export default function App() {
@@ -86,51 +79,6 @@ export default function App() {
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  // Send height to parent WordPress page to eliminate double scrollbars
-  useEffect(() => {
-    function sendHeight() {
-      // Get the actual content height
-      const height = Math.max(
-        document.documentElement.scrollHeight,
-        document.body.scrollHeight
-      );
-
-      window.parent.postMessage(
-        { type: "IFRAME_HEIGHT", height: height },
-        PARENT_ORIGIN
-      );
-    }
-
-    // Send on load (multiple times to catch different render stages)
-    setTimeout(sendHeight, 100);
-    setTimeout(sendHeight, 500);
-    setTimeout(sendHeight, 1500);
-
-    // Send on window resize
-    window.addEventListener("resize", sendHeight);
-
-    // Watch for DOM changes (filters, view toggle, etc.)
-    const observer = new MutationObserver(() => {
-      if (window._heightTimer) {
-        clearTimeout(window._heightTimer);
-      }
-      window._heightTimer = setTimeout(sendHeight, 200);
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    return () => {
-      window.removeEventListener("resize", sendHeight);
-      observer.disconnect();
-      if (window._heightTimer) {
-        clearTimeout(window._heightTimer);
-      }
-    };
   }, []);
 
   if (loading) return <div className="p-4">Loading…</div>;
