@@ -83,22 +83,27 @@ export default function App() {
 
   // NEW: Send height to parent WordPress page to eliminate double scrollbars
   useEffect(() => {
-    function sendHeight() {
-      const height = Math.max(
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight,
-        document.body.offsetHeight,
-        document.documentElement.offsetHeight
-      );
+// In your useEffect that sends height, replace the sendHeight function with:
+function sendHeight() {
+  // Give the DOM a moment to settle after changes
+  requestAnimationFrame(() => {
+    const height = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.offsetHeight,
+      document.getElementById('root')?.scrollHeight || 0
+    );
 
-      window.parent.postMessage(
-        {
-          type: "IFRAME_HEIGHT",
-          height: height,
-        },
-        PARENT_ORIGIN
-      );
-    }
+    window.parent.postMessage(
+      {
+        type: "IFRAME_HEIGHT",
+        height: height + 20, // Add small buffer for safety
+      },
+      PARENT_ORIGIN
+    );
+  });
+}
 
     // Send height on load
     sendHeight();
