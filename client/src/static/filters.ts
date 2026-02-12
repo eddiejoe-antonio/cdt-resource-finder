@@ -168,3 +168,24 @@ export function labelForService(svc: Service): string {
 export function labelForOrgService(svc: OrgService): string {
   return ORG_SERVICE_DISPLAY_LABELS[svc] ?? svc;
 }
+/* ======================================================
+   SERVICE DELIVERY (Q8 filter)
+====================================================== */
+
+export const SERVICE_DELIVERY_OPTIONS = [
+  "Virtually",
+  "In-Person",
+  "Either Virtually or In-Person",
+] as const;
+
+export type ServiceDeliveryFilter = (typeof SERVICE_DELIVERY_OPTIONS)[number];
+
+export function normalizeServiceDeliveryFlags(raw?: string): {
+  hasInPerson: boolean;
+  hasVirtual: boolean;
+} {
+  const t = (raw ?? "").toLowerCase();
+  const hasInPerson = t.includes("in-person") || t.includes("in person");
+  const hasVirtual = t.includes("virtually") || t.includes("virtual");
+  return { hasInPerson, hasVirtual };
+}

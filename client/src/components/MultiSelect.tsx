@@ -77,7 +77,7 @@ export function MultiSelect<T extends string>({
         onClick={() => setOpen(false)}
       />
       <div 
-        className="bg-white border rounded-md shadow-sm"
+        className="bg-white border shadow-sm"
         style={{
           position: 'fixed',
           top: position.top,

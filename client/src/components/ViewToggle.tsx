@@ -1,75 +1,142 @@
-import React, { useRef } from "react";
+// src/components/ViewToggle.tsx
+import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 
 export type ViewMode = "list" | "map";
 
 interface ViewToggleProps {
   selectedView: ViewMode;
   handleNavigate: (view: ViewMode) => void;
+  label?: string; // optional aria-label
 }
 
-const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate }) => {
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = React.useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!mq) return;
+
+    const onChange = () => setReduced(Boolean(mq.matches));
+    onChange();
+
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  return reduced;
+}
+
+const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, label }) => {
   const mapButtonRef = useRef<HTMLButtonElement>(null);
   const listButtonRef = useRef<HTMLButtonElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
-  const moveFocusAndNavigate = (next: ViewMode) => {
-    handleNavigate(next);
-    // Optional: move focus to the newly selected button when switching with arrow keys
-    if (next === "map") mapButtonRef.current?.focus();
-    else listButtonRef.current?.focus();
-  };
+  const setViewInstant = useCallback(
+    (next: ViewMode) => {
+      if (next === selectedView) return;
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      // Commit state immediately so UI updates even under load.
+      flushSync(() => handleNavigate(next));
+    },
+    [handleNavigate, selectedView]
+  );
 
-    e.preventDefault();
-    const next: ViewMode = selectedView === "map" ? "list" : "map";
-    moveFocusAndNavigate(next);
-  };
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      // Only handle arrow/home/end. Let Tab behave normally.
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const next: ViewMode = selectedView === "map" ? "list" : "map";
+        setViewInstant(next);
 
-  const baseClasses =
-    "flex flex-1 items-center justify-center px-4 py-2 rounded-full border " +
-    "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#1E79C8]";
+        // Move focus to the newly selected tab for accessibility
+        if (next === "map") mapButtonRef.current?.focus();
+        else listButtonRef.current?.focus();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setViewInstant("map");
+        mapButtonRef.current?.focus();
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setViewInstant("list");
+        listButtonRef.current?.focus();
+      }
+    },
+    [selectedView, setViewInstant]
+  );
 
-  const selectedClasses = "bg-[#066b99] text-white border-white";
-const unselectedClasses =
-  "bg-[#ecf1f3] border-[#3B75A9] md:hover:bg-[#066b99] md:hover:text-white";
+  const thumbStyle = useMemo<React.CSSProperties>(() => {
+    return {
+      transform: selectedView === "map" ? "translateX(0%)" : "translateX(100%)",
+      transition: reducedMotion ? "none" : "transform 120ms ease-out",
+      willChange: "transform",
+    };
+  }, [selectedView, reducedMotion]);
+
+  const baseButton =
+    "relative z-10 flex flex-1 items-center justify-center gap-2 px-4 py-2 rounded-full " +
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#1E79C8] " +
+    "select-none";
+
+  // Single source of truth for font size inside the toggle
+  const FONT_SIZE = "1rem";
 
   return (
     <div
-      className="flex w-full space-x-1"
-      role="group"
-      aria-label="View toggle"
+      className="relative flex w-full items-stretch rounded-full border border-[#3B75A9] bg-[#ecf1f3] p-1"
+      role="tablist"
+      aria-label={label ?? "View toggle"}
       onKeyDown={onKeyDown}
+      style={{ fontSize: FONT_SIZE }}
     >
+      {/* Sliding thumb */}
+      <div
+        aria-hidden="true"
+        className="absolute left-1 top-1 bottom-1 w-1/2 rounded-full bg-[#066b99]"
+        style={thumbStyle}
+      />
+
       <button
         type="button"
         ref={mapButtonRef}
-        aria-pressed={selectedView === "map"}
-        onClick={() => handleNavigate("map")}
-        tabIndex={0} // ✅ both are tabbable
-        className={`${baseClasses} ${selectedView === "map" ? selectedClasses : unselectedClasses}`}
+        role="tab"
+        aria-selected={selectedView === "map"}
+        // ✅ BOTH buttons tabbable again
+        tabIndex={0}
+        onClick={() => setViewInstant("map")}
+        className={baseButton}
+        style={{
+          fontSize: "inherit",
+          color: selectedView === "map" ? "#ffffff" : "#092940",
+        }}
       >
-        <span className="ca-gov-icon-road-pin m-r-sm" aria-hidden="true" />
-        <span>Map View</span>
+        <span className="ca-gov-icon-road-pin" aria-hidden="true" style={{ fontSize: "inherit" }} />
+        <span style={{ fontSize: "inherit", lineHeight: 1.2 }}>Map view</span>
       </button>
 
       <button
         type="button"
         ref={listButtonRef}
-        aria-pressed={selectedView === "list"}
-        onClick={() => handleNavigate("list")}
-        tabIndex={0} // ✅ both are tabbable
-        className={`${baseClasses} ${selectedView === "list" ? selectedClasses : unselectedClasses}`}
+        role="tab"
+        aria-selected={selectedView === "list"}
+        tabIndex={0}
+        onClick={() => setViewInstant("list")}
+        className={baseButton}
+        style={{
+          fontSize: "inherit",
+          color: selectedView === "list" ? "#ffffff" : "#092940",
+        }}
       >
-        <span className="ca-gov-icon-table m-r-sm" aria-hidden="true" />
-        <span>Table View</span>
+        <span className="ca-gov-icon-table" aria-hidden="true" style={{ fontSize: "inherit" }} />
+        <span style={{ fontSize: "inherit", lineHeight: 1.2 }}>Table view</span>
       </button>
 
       <span className="sr-only" aria-live="polite">
-        {selectedView === "map" ? "Map view selected" : "Tabular view selected"}
+        {selectedView === "map" ? "Map view selected" : "Table view selected"}
       </span>
     </div>
   );
 };
 
-export default ViewToggle;
+export default memo(ViewToggle);

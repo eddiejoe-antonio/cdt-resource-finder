@@ -1,38 +1,96 @@
 // src/components/Pagination.tsx
+type PerPageOption = 12 | 36 | 72 | "all";
+
 type Props = {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+
+  perPage: PerPageOption;
+  onPerPageChange: (value: PerPageOption) => void;
 };
 
-export default function Pagination({ currentPage, totalPages, onPageChange }: Props) {
-  if (totalPages <= 1) return null;
+export default function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+  perPage,
+  onPerPageChange,
+}: Props) {
   const clamp = (p: number) => Math.max(1, Math.min(totalPages, p));
+  const perPageOptions: PerPageOption[] = [12, 36, 72, "all"];
 
   return (
-    <nav aria-label="Pagination" className="m-t-md m-b-lg d-flex justify-content-center align-items-center gap-2">
-      <button
-        type="button"
-        className="btn btn-primary-outline"
-        disabled={currentPage <= 1}
-        onClick={() => onPageChange(clamp(currentPage - 1))}
-      >
-        Previous
-      </button>
+    <div style={{ paddingBottom: 32, marginBottom: 16 }}>
+      <div className="row align-items-center g-3">
+        {/* ✅ Left third: Pagination */}
+        <div className="col-12 col-md-4">
+          {totalPages > 1 ? (
+            <nav
+              aria-label="Pagination"
+              className="d-flex align-items-center gap-2 flex-wrap"
+            >
+              <button
+                type="button"
+                className="btn btn-primary-outline"
+                disabled={currentPage <= 1}
+                onClick={() => onPageChange(clamp(currentPage - 1))}
+              >
+                Previous
+              </button>
 
-      <span className="m-x-sm">
-        Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
-      </span>
+              <span className="m-x-sm">
+                Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+              </span>
 
-      <button
-        type="button"
-        className="btn btn-primary-outline"
-        disabled={currentPage >= totalPages}
-        onClick={() => onPageChange(clamp(currentPage + 1))}
-      >
-        Next
-      </button>
-    </nav>
+              <button
+                type="button"
+                className="btn btn-primary-outline"
+                disabled={currentPage >= totalPages}
+                onClick={() => onPageChange(clamp(currentPage + 1))}
+              >
+                Next
+              </button>
+            </nav>
+          ) : (
+            // keep height consistent if only 1 page
+            <div aria-hidden="true" style={{ height: 44 }} />
+          )}
+        </div>
+
+        {/* ✅ Middle third: spacer (empty) */}
+        <div className="d-none d-md-block col-md-4" aria-hidden="true" />
+
+        {/* ✅ Right third: Results per page (right aligned on desktop) */}
+        <div className="col-12 col-md-4">
+          <div className="d-flex align-items-center gap-2 justify-content-start justify-content-md-end">
+            <label htmlFor="per-page-select" className="m-0">
+              Results per page:
+            </label>
+
+            <select
+              id="per-page-select"
+              className="form-select"
+              // ✅ wide enough so label doesn't get cramped
+              style={{ width: 180, maxWidth: "100%" }}
+              value={perPage}
+              onChange={(e) =>
+                onPerPageChange(
+                  e.target.value === "all"
+                    ? "all"
+                    : (Number(e.target.value) as PerPageOption)
+                )
+              }
+            >
+              {perPageOptions.map((opt) => (
+                <option key={String(opt)} value={opt}>
+                  {opt === "all" ? "All" : opt}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
-

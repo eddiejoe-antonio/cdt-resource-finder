@@ -74,7 +74,7 @@ export function PortalSingleSelect<T extends string>({
         width: pos.width,
         zIndex: 9999,
       }}
-      className="bg-white border rounded-md shadow-sm"
+      className="bg-white border shadow-sm"
       onKeyDown={(e) => {
         const buttons = Array.from(
           menuRef.current?.querySelectorAll<HTMLButtonElement>('button[data-opt="true"]') ?? []
@@ -130,7 +130,7 @@ export function PortalSingleSelect<T extends string>({
               className={`
                 w-100 text-start
                 d-flex align-items-center justify-content-between
-                px-2 py-2 rounded
+                px-2 py-2
                 ${selected ? "bg-gray-100" : ""}
               `}
               style={{
@@ -269,7 +269,7 @@ export function PortalMultiSelect<T extends string>({
         width: pos.width,
         zIndex: 9999,
       }}
-      className="bg-white border rounded-md shadow-sm"
+      className="bg-white border shadow-sm"
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.preventDefault();

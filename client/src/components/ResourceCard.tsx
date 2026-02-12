@@ -62,7 +62,7 @@ export const ResourceCard: React.FC<Props> = ({
     <article className="card h-100">
       <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border d-flex flex-column h-100">
         <div>
-          <h4 className="h4 m-0">{resource.name || "Untitled organization"}</h4>
+          <h4 className="h5 m-0">{resource.name || "Untitled organization"}</h4>
 
           <ul className="list-unstyled m-t-md m-b-0">
             {address && (
@@ -156,7 +156,7 @@ export const ResourceCard: React.FC<Props> = ({
         <div className="m-t-md mt-auto">
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-outline-primary"
             onClick={() => setShowMore((v) => !v)}
             aria-expanded={showMore}
             aria-controls={detailsId}
