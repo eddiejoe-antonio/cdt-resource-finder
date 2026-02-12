@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 
@@ -24,7 +24,6 @@ function getCookie(name: string): string | null {
 
 function setGoogTransCookie(targetLang: string) {
   const value = `/${PAGE_LANG}/${targetLang}`;
-
   // Try the modern flags first (needed for 3rd-party iframe cookies in many cases)
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
   // Fallback (older behavior)
@@ -34,6 +33,51 @@ function setGoogTransCookie(targetLang: string) {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
+
+  const appReadyKey = useMemo(() => (loading ? "loading" : err ? "error" : "ready"), [loading, err]);
+
+  // ✅ IFRAME HEIGHT MESSAGING
+  useEffect(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+
+    function sendHeight() {
+      // Wait for layout to settle (React render -> layout -> measure)
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          const height = document.documentElement.scrollHeight || document.body.scrollHeight;
+
+          // Post only to your known parent origin (safer than "*")
+          window.parent?.postMessage({ type: "setHeight", height }, PARENT_ORIGIN);
+        });
+      });
+    }
+
+    // Initial send once this effect runs
+    sendHeight();
+
+    // Re-send on resize
+    window.addEventListener("resize", sendHeight);
+
+    // Re-send whenever page content changes size (filters/accordion/pagination, etc.)
+    const ro = new ResizeObserver(() => sendHeight());
+    ro.observe(document.documentElement);
+
+    // Optional: if fonts/images load after initial render and shift height, this helps too
+    window.addEventListener("load", sendHeight);
+
+    return () => {
+      window.removeEventListener("resize", sendHeight);
+      window.removeEventListener("load", sendHeight);
+      ro.disconnect();
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+    // appReadyKey ensures we re-measure when switching loading -> ready, or on error
+  }, [appReadyKey]);
 
   // Existing data load
   useEffect(() => {
