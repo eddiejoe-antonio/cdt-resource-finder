@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 
-const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
+const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.gov";
 const PAGE_LANG = "en";
 
 type ParentMsg =
@@ -24,9 +24,7 @@ function getCookie(name: string): string | null {
 
 function setGoogTransCookie(targetLang: string) {
   const value = `/${PAGE_LANG}/${targetLang}`;
-  // Try the modern flags first (needed for 3rd-party iframe cookies in many cases)
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
-  // Fallback (older behavior)
   document.cookie = `googtrans=${value}; path=/`;
 }
 
@@ -34,62 +32,62 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
-  const appReadyKey = useMemo(() => (loading ? "loading" : err ? "error" : "ready"), [loading, err]);
+  const renderStateKey = useMemo(
+    () => (loading ? "loading" : err ? "error" : "ready"),
+    [loading, err]
+  );
 
-  // ✅ IFRAME HEIGHT MESSAGING
+  /* -------------------------------------------------------
+     AUTO IFRAME HEIGHT POSTMESSAGE
+     ------------------------------------------------------- */
   useEffect(() => {
-    let raf1 = 0;
-    let raf2 = 0;
+    let timeout: number | null = null;
 
     function sendHeight() {
-      // Wait for layout to settle (React render -> layout -> measure)
-      if (raf1) cancelAnimationFrame(raf1);
-      if (raf2) cancelAnimationFrame(raf2);
+      if (timeout) window.clearTimeout(timeout);
 
-      raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => {
-          const height = document.documentElement.scrollHeight || document.body.scrollHeight;
+      timeout = window.setTimeout(() => {
+        const height =
+          document.documentElement.scrollHeight ||
+          document.body.scrollHeight;
 
-          // Post only to your known parent origin (safer than "*")
-          window.parent?.postMessage({ type: "setHeight", height }, PARENT_ORIGIN);
-        });
-      });
+        window.parent?.postMessage(
+          { type: "setHeight", height },
+          PARENT_ORIGIN
+        );
+      }, 50); // debounce prevents message spam
     }
 
-    // Initial send once this effect runs
     sendHeight();
 
-    // Re-send on resize
     window.addEventListener("resize", sendHeight);
-
-    // Re-send whenever page content changes size (filters/accordion/pagination, etc.)
-    const ro = new ResizeObserver(() => sendHeight());
-    ro.observe(document.documentElement);
-
-    // Optional: if fonts/images load after initial render and shift height, this helps too
     window.addEventListener("load", sendHeight);
+
+    const observer = new ResizeObserver(sendHeight);
+    observer.observe(document.body);
 
     return () => {
       window.removeEventListener("resize", sendHeight);
       window.removeEventListener("load", sendHeight);
-      ro.disconnect();
-      if (raf1) cancelAnimationFrame(raf1);
-      if (raf2) cancelAnimationFrame(raf2);
+      observer.disconnect();
+      if (timeout) window.clearTimeout(timeout);
     };
-    // appReadyKey ensures we re-measure when switching loading -> ready, or on error
-  }, [appReadyKey]);
+  }, [renderStateKey]);
 
-  // Existing data load
+  /* -------------------------------------------------------
+     LOAD DATA
+     ------------------------------------------------------- */
   useEffect(() => {
     fetchResourcesLocal()
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  // Receive language changes from WordPress parent
+  /* -------------------------------------------------------
+     RECEIVE TRANSLATION COMMANDS FROM PARENT
+     ------------------------------------------------------- */
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      // Security: only accept messages from your WP host
       if (e.origin !== PARENT_ORIGIN) return;
 
       const data = e.data as ParentMsg;
@@ -98,26 +96,21 @@ export default function App() {
 
       const nextLang = normalizeLang(String(data.lang ?? PAGE_LANG));
 
-      // Set cookie
       setGoogTransCookie(nextLang);
 
-      // Check whether cookie actually stuck (3rd-party iframe cookies often blocked)
       const cookieAfter = getCookie("googtrans");
 
-      // Tell parent what happened so it can fall back to proxy URL if needed
       window.parent.postMessage(
         {
           type: "IFRAME_TRANSLATE_ACK",
           receivedLang: nextLang,
-          cookieAfter, // null/empty means blocked
+          cookieAfter,
         },
         PARENT_ORIGIN
       );
 
-      // If cookie didn't stick, reloading won't help — parent will fall back.
       if (!cookieAfter) return;
 
-      // Reload so Google Translate applies cleanly
       window.location.reload();
     }
 
@@ -125,6 +118,9 @@ export default function App() {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
+  /* -------------------------------------------------------
+     UI STATES
+     ------------------------------------------------------- */
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
