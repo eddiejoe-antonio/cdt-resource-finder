@@ -1,9 +1,9 @@
 // src/App.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 
-const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.gov";
+const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
 const PAGE_LANG = "en";
 
 type ParentMsg =
@@ -24,7 +24,10 @@ function getCookie(name: string): string | null {
 
 function setGoogTransCookie(targetLang: string) {
   const value = `/${PAGE_LANG}/${targetLang}`;
+
+  // Try the modern flags first (needed for 3rd-party iframe cookies in many cases)
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
+  // Fallback (older behavior)
   document.cookie = `googtrans=${value}; path=/`;
 }
 
@@ -32,66 +35,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
-  const renderStateKey = useMemo(
-    () => (loading ? "loading" : err ? "error" : "ready"),
-    [loading, err]
-  );
-
-  /* -------------------------------------------------------
-     AUTO IFRAME HEIGHT POSTMESSAGE (MutationObserver version)
-     ------------------------------------------------------- */
-  useEffect(() => {
-    let resizeTimeout: number | undefined;
-
-    function sendHeight() {
-      const height =
-        document.documentElement.scrollHeight || document.body.scrollHeight;
-
-      window.parent?.postMessage({ type: "setHeight", height }, PARENT_ORIGIN);
-    }
-
-    function scheduleHeightUpdate() {
-      if (resizeTimeout) window.clearTimeout(resizeTimeout);
-      resizeTimeout = window.setTimeout(sendHeight, 100); // runs once after changes settle
-    }
-
-    // initial
-    sendHeight();
-
-    // resize -> debounced
-    window.addEventListener("resize", scheduleHeightUpdate);
-    window.addEventListener("load", sendHeight);
-
-    // MutationObserver -> debounced
-    const observer = new MutationObserver(scheduleHeightUpdate);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-    });
-
-    return () => {
-      window.removeEventListener("resize", scheduleHeightUpdate);
-      window.removeEventListener("load", sendHeight);
-      observer.disconnect();
-      if (resizeTimeout) window.clearTimeout(resizeTimeout);
-    };
-  }, [renderStateKey]);
-
-  /* -------------------------------------------------------
-     LOAD DATA
-     ------------------------------------------------------- */
+  // Existing data load
   useEffect(() => {
     fetchResourcesLocal()
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  /* -------------------------------------------------------
-     RECEIVE TRANSLATION COMMANDS FROM PARENT
-     ------------------------------------------------------- */
+  // Receive language changes from WordPress parent
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      // Security: only accept messages from your WP host
       if (e.origin !== PARENT_ORIGIN) return;
 
       const data = e.data as ParentMsg;
@@ -100,21 +54,26 @@ export default function App() {
 
       const nextLang = normalizeLang(String(data.lang ?? PAGE_LANG));
 
+      // Set cookie
       setGoogTransCookie(nextLang);
 
+      // Check whether cookie actually stuck (3rd-party iframe cookies often blocked)
       const cookieAfter = getCookie("googtrans");
 
+      // Tell parent what happened so it can fall back to proxy URL if needed
       window.parent.postMessage(
         {
           type: "IFRAME_TRANSLATE_ACK",
           receivedLang: nextLang,
-          cookieAfter,
+          cookieAfter, // null/empty means blocked
         },
         PARENT_ORIGIN
       );
 
+      // If cookie didn't stick, reloading won't help — parent will fall back.
       if (!cookieAfter) return;
 
+      // Reload so Google Translate applies cleanly
       window.location.reload();
     }
 
