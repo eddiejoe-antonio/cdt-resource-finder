@@ -80,7 +80,7 @@ type IndexedResource = Resource & {
   orgServicesLabels: string[];
   hasOrgServices: boolean;
 
-  // derived from Q8 and address
+  // derived from Q8
   hasVirtual: boolean;
   hasInPerson: boolean;
 };
@@ -103,7 +103,7 @@ type ResourceFeatureCollection = {
   features: ResourceFeature[];
 };
 
-// Chunk feature-state writes so we don't lock the main thread
+// Chunk feature-state writes so we don’t lock the main thread
 function applyFeatureStateBatched(
   map: mapboxgl.Map,
   ids: string[],
@@ -300,8 +300,7 @@ export default function ResourceFinder() {
         .map((n) => orgServiceMap.get(n))
         .filter((v): v is OrgService => Boolean(v));
 
-      // ✅ UPDATED: Pass address to normalizeServiceDeliveryFlags
-      const flags = normalizeServiceDeliveryFlags(r.serviceDelivery, r.addressLine1);
+      const flags = normalizeServiceDeliveryFlags(r.serviceDelivery);
 
       return {
         ...r,
@@ -406,13 +405,11 @@ export default function ResourceFinder() {
         }
       }
 
-      // ✅ Service delivery filter logic (unchanged, but now uses updated flags)
       if (serviceDeliveryFilter === "Virtually") {
         if (!r.hasVirtual) return false;
       } else if (serviceDeliveryFilter === "In-Person") {
         if (!r.hasInPerson) return false;
       } else {
-        // "Either Virtually or In-Person" - must have at least one option
         if (!(r.hasVirtual || r.hasInPerson)) return false;
       }
 
@@ -745,8 +742,17 @@ export default function ResourceFinder() {
   const orgOptions = ORG_SERVICES.map((s) => ({ value: s, label: labelForOrgService(s) }));
 
   const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map(
-    (v) => ({ value: v, label: v })
+    (v) => ({
+      value: v,
+      label:
+        v === "Virtually"
+          ? "Virtual"
+          : v === "Either Virtually or In-Person"
+            ? "Either Virtual or In-Person"
+            : v,
+    })
   );
+
 
   const sortOptions: SelectOption<SortMode>[] = [
     { value: "alphabetical", label: "A-Z" },
