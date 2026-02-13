@@ -1,8 +1,7 @@
 // src/static/filters.ts
 
 export const CSV_FIELDS = {
-  counties:
-    "6. Please indicate all the counties in which you provide services.",
+  counties: "6. Please indicate all the counties in which you provide services.",
   services:
     "4. What digital inclusion service(s) does your entity/organization provide to individuals? Please select all that apply.",
 } as const;
@@ -92,7 +91,6 @@ export const SERVICES = [
   "Workforce Development Resources",
 ] as const;
 
-
 export type Service = (typeof SERVICES)[number];
 
 /* ======================================================
@@ -107,7 +105,7 @@ export const ORG_SERVICES = [
   "Organizational training",
   "Partnership opportunities",
   "Train-the-trainer",
-    "Other",
+  "Other",
 ] as const;
 
 export type OrgService = (typeof ORG_SERVICES)[number];
@@ -118,17 +116,17 @@ export type OrgService = (typeof ORG_SERVICES)[number];
 
 /** Resident-facing service labels */
 export const SERVICE_DISPLAY_LABELS: Record<Service, string> = {
-    "Computer Center(s)": "Computer centers",
+  "Computer Center(s)": "Computer centers",
   "Digital Navigation (in-person or virtual/call center)":
     "Digital navigation (in-person or virtual/call center)",
-      "Digital Literacy & Skills Training": "Digital skills training",
-        "Free/Low-Cost Devices": "Free or low-cost devices",
+  "Digital Literacy & Skills Training": "Digital skills training",
+  "Free/Low-Cost Devices": "Free or low-cost devices",
   "Free/Low-Cost Hotspots": "Free or low-cost hotspots",
   "Locating Low-Cost Internet Service Programs": "Low-cost internet programs",
   "Enrollment assistance in low-cost internet service programs":
     "Low-cost internet enrollment assistance",
-      "Online Educational Resources": "Online educational resources",
-      "Public Wi-Fi": "Public Wi-Fi",
+  "Online Educational Resources": "Online educational resources",
+  "Public Wi-Fi": "Public Wi-Fi",
   "Technical Support": "Technical support",
   "Workforce Development Resources": "Workforce development",
 };
@@ -182,36 +180,30 @@ export const SERVICE_DELIVERY_OPTIONS = [
 export type ServiceDeliveryFilter = (typeof SERVICE_DELIVERY_OPTIONS)[number];
 
 /**
- * ✅ UPDATED: Now accepts address parameter to handle "Virtual" address logic
- * 
- * When address is "Virtual", the organization is considered virtual-only:
- * - hasVirtual: true
- * - hasInPerson: false
- * 
- * This ensures virtual-only orgs don't appear in "Either Virtually or In-Person" filter
+ * ✅ FIXED AT THE SOURCE:
+ * If Address Line 1 is literally "Virtual", treat the org as virtual-only
+ * even if Q8 includes "In-Person" — this prevents those rows from showing
+ * when the user filters to In-Person.
  */
 export function normalizeServiceDeliveryFlags(
   raw?: string,
-  address?: string
+  addressLine1?: string
 ): {
   hasInPerson: boolean;
   hasVirtual: boolean;
 } {
-  const t = (raw ?? "").toLowerCase();
-  const addr = (address ?? "").toLowerCase().trim();
-  
-  // Check if address is "Virtual"
-  const addressIsVirtual = addr === "virtual";
-  
-  // Check service delivery flags from the serviceDelivery field
-  const hasInPerson = t.includes("in-person") || t.includes("in person");
-  const hasVirtual = t.includes("virtually") || t.includes("virtual");
-  
-  // If address is "Virtual", force virtual-only (no in-person option)
-  // This prevents the org from showing in "Either Virtually or In-Person"
-  if (addressIsVirtual) {
+  const t = normalizeValue(raw ?? "");
+  const addr = normalizeValue(addressLine1 ?? "");
+
+  // If address line 1 is "Virtual", force virtual-only
+  if (addr === "virtual") {
     return { hasInPerson: false, hasVirtual: true };
   }
-  
+
+  const hasInPerson =
+    t.includes("in-person") || t.includes("in person") || t.includes("inperson");
+
+  const hasVirtual = t.includes("virtually") || t.includes("virtual");
+
   return { hasInPerson, hasVirtual };
 }

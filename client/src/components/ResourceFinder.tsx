@@ -17,7 +17,6 @@ import ViewToggle, { type ViewMode } from "./ViewToggle";
 import Pagination from "./Pagination";
 import { Tooltip } from "./Tooltip";
 
-
 import {
   COUNTIES,
   SERVICES,
@@ -37,7 +36,6 @@ import {
 import { SingleSelect, type SelectOption } from "./SingleSelect";
 import { MultiSelect } from "./MultiSelect";
 
-// ✅ bounds file
 import caCountyBoundsRaw from "../static/ca_county_bounds.json";
 
 type Audience = "Resident" | "Organization";
@@ -88,7 +86,7 @@ type IndexedResource = Resource & {
   orgServicesLabels: string[];
   hasOrgServices: boolean;
 
-  // derived from Q8
+  // derived from Q8 + address
   hasVirtual: boolean;
   hasInPerson: boolean;
 };
@@ -111,7 +109,6 @@ type ResourceFeatureCollection = {
   features: ResourceFeature[];
 };
 
-// Chunk feature-state writes so we don’t lock the main thread
 function applyFeatureStateBatched(
   map: mapboxgl.Map,
   ids: string[],
@@ -166,7 +163,7 @@ export default function ResourceFinder() {
   const [perPage, setPerPage] = useState<PerPageOption>(12);
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
-  // Map refs (map is created once when in map view)
+  // Map refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
@@ -227,7 +224,6 @@ export default function ResourceFinder() {
     [flyToCalifornia]
   );
 
-  // ✅ Fix #1: useCallback expects an inline function expression (no cast wrapper)
   const flyToResourceId = useCallback((id: string, opts?: { immediate?: boolean }) => {
     const map = mapRef.current;
     if (!map) return;
@@ -309,7 +305,7 @@ export default function ResourceFinder() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ------------------ build indexed resources once ------------------
+  // ------------------ indexed resources ------------------
   const indexedResources = useMemo<IndexedResource[]>(() => {
     const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
     const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
@@ -334,7 +330,8 @@ export default function ResourceFinder() {
         .map((n) => orgServiceMap.get(n))
         .filter((v): v is OrgService => Boolean(v));
 
-      const flags = normalizeServiceDeliveryFlags(r.serviceDelivery);
+      // ✅ FIX: pass Address Line 1 ("Virtual") into flags normalization
+      const flags = normalizeServiceDeliveryFlags(r.serviceDelivery, r.addressLine1);
 
       return {
         ...r,
@@ -392,15 +389,13 @@ export default function ResourceFinder() {
   useEffect(() => {
     coordByIdRef.current = coordLookup;
     allIdsRef.current = allIds;
-
-    // If data changes, reset our diff baseline to "everything visible"
     prevWantedIdsRef.current = new Set(allIds);
   }, [coordLookup, allIds]);
 
   // ------------------ fuse ------------------
   const fuse = useMemo(() => {
     return new Fuse(indexedResources, {
-      includeScore: false, // faster
+      includeScore: false,
       shouldSort: true,
       threshold: 0.35,
       distance: 200,
@@ -433,7 +428,6 @@ export default function ResourceFinder() {
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
     return searched.filter((r) => {
-      // ✅ single-county filter
       if (selectedCounty) {
         if (!r.countiesSet.has(selectedCounty)) return false;
       }
@@ -485,18 +479,15 @@ export default function ResourceFinder() {
     debouncedFilteredForMapRef.current = debouncedFilteredForMap;
   }, [debouncedFilteredForMap]);
 
-  // Also keep latest county in a ref for the map-on-load initial zoom
   const selectedCountyRef = useRef<County | "">("");
   useEffect(() => {
     selectedCountyRef.current = selectedCounty;
   }, [selectedCounty]);
 
-  // ✅ fastest possible sync: only write feature-state for ids that changed visibility
   const syncMapVisibilityDelta = useCallback((map: mapboxgl.Map, nextWanted: Set<string>) => {
     if (!map.getSource(MAP_SOURCE_ID)) return;
 
     const prevWanted = prevWantedIdsRef.current;
-
     const toHide: string[] = [];
     const toShow: string[] = [];
 
@@ -553,7 +544,7 @@ export default function ResourceFinder() {
     resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ------------------ MAP INIT (NO FILTER DEPS — prevents reloads) ------------------
+  // ------------------ MAP INIT ------------------
   useEffect(() => {
     if (viewMode !== "map") return;
     if (!mapContainerRef.current) return;
@@ -614,19 +605,15 @@ export default function ResourceFinder() {
       if (c) flyToCounty(c as County, { immediate: true });
       else flyToCalifornia({ immediate: true });
 
-      const ids = allIdsRef.current;
-      prevWantedIdsRef.current = new Set(ids);
+      prevWantedIdsRef.current = new Set(allIdsRef.current);
 
       const wanted = new Set(debouncedFilteredForMapRef.current.map((r) => r.id));
       syncMapVisibilityDelta(map, wanted);
 
-      // ✅ Fix #2: remove EventData (not exported in your mapbox-gl types)
-      // ✅ Fix #3: no `any` — use MapboxGeoJSONFeature in type guards
       const showHover = (e: mapboxgl.MapMouseEvent) => {
         const f = e.features?.[0];
         if (!f) return;
 
-        // Determine feature id consistently (promoteId => feature.id should be string)
         const id = typeof f.id === "string" ? f.id : "";
         if (id) {
           const st = map.getFeatureState({ source: MAP_SOURCE_ID, id }) as { hidden?: boolean };
@@ -636,9 +623,7 @@ export default function ResourceFinder() {
         const geom = f.geometry;
         if (!geom || geom.type !== "Point") return;
 
-        const coords = (geom.coordinates as [number, number]) ?? null;
-        if (!coords) return;
-
+        const coords = geom.coordinates as [number, number];
         const props = (f.properties ?? {}) as Record<string, unknown>;
         const name = String(props.name ?? "");
         const address = String(props.address ?? "");
@@ -667,10 +652,12 @@ export default function ResourceFinder() {
       map.on("mouseenter", MAP_LAYER_ID, () => {
         map.getCanvas().style.cursor = "pointer";
       });
+
       map.on("mouseleave", MAP_LAYER_ID, () => {
         map.getCanvas().style.cursor = "";
         hideHover();
       });
+
       map.on("mousemove", MAP_LAYER_ID, showHover);
 
       map.on("click", MAP_LAYER_ID, (e) => {
@@ -711,7 +698,7 @@ export default function ResourceFinder() {
     syncMapVisibilityDelta,
   ]);
 
-  // ------------------ Keep map source data updated without re-init ------------------
+  // Keep map source updated when data changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -732,7 +719,7 @@ export default function ResourceFinder() {
     else run();
   }, [allMapGeoJson, syncMapVisibilityDelta]);
 
-  // ------------------ MAP FILTERING via diffs (SUPER smooth) ------------------
+  // Map visibility updates from filter changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -757,7 +744,7 @@ export default function ResourceFinder() {
     run();
   }, [debouncedFilteredForMap, syncMapVisibilityDelta]);
 
-  // ✅ County zoom behavior (only when NO resource is selected)
+  // County zoom behavior (only when NO resource is selected)
   useEffect(() => {
     if (viewMode !== "map") return;
     if (selectedResourceId) return;
@@ -766,7 +753,7 @@ export default function ResourceFinder() {
     else flyToCalifornia();
   }, [viewMode, selectedCounty, selectedResourceId, flyToCounty, flyToCalifornia]);
 
-  // Zoom behavior ONLY when selection changes (resource overrides county zoom)
+  // Resource selection zoom
   useEffect(() => {
     if (viewMode !== "map") return;
     if (selectedResourceId) flyToResourceId(selectedResourceId);
@@ -861,8 +848,8 @@ export default function ResourceFinder() {
         v === "Virtually"
           ? "Virtual"
           : v === "Either Virtually or In-Person"
-            ? "Either Virtual or In-Person"
-            : v,
+          ? "Either Virtual or In-Person"
+          : v,
     })
   );
 
@@ -889,7 +876,7 @@ export default function ResourceFinder() {
     );
   };
 
-  // ------------------ side pane resources ------------------
+  // side pane resources
   const sidePanelResources = useMemo(() => {
     if (!selectedResourceId) return sortedFiltered;
     const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
@@ -1042,13 +1029,6 @@ export default function ResourceFinder() {
                           justifyContent: "center",
                           cursor: "pointer",
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            onSearchChange("");
-                            (document.getElementById("search") as HTMLInputElement | null)?.focus();
-                          }
-                        }}
                       >
                         <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
                           <path
@@ -1077,7 +1057,11 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
+                      />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -1146,7 +1130,10 @@ export default function ResourceFinder() {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label className="form-label d-inline-flex align-items-center" htmlFor="view-toggle">
+                    <label
+                      className="form-label d-inline-flex align-items-center"
+                      htmlFor="view-toggle"
+                    >
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>
