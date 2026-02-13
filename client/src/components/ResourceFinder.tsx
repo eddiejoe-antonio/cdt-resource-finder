@@ -36,9 +36,16 @@ import {
 import { SingleSelect, type SelectOption } from "./SingleSelect";
 import { MultiSelect } from "./MultiSelect";
 
+// ✅ bounds file
+import caCountyBoundsRaw from "../static/ca_county_bounds.json";
+
 type Audience = "Resident" | "Organization";
 type SortMode = "alphabetical" | "proximity";
 type PerPageOption = 12 | 36 | 72 | "all";
+
+// JSON is number[][]; we trust/own it, so cast through unknown to satisfy TS
+type CountyBoundsMap = Record<string, [[number, number], [number, number]]>;
+const CA_COUNTY_BOUNDS = caCountyBoundsRaw as unknown as CountyBoundsMap;
 
 // California bbox
 const CA_BOUNDS: mapboxgl.LngLatBoundsLike = [
@@ -107,16 +114,16 @@ type ResourceFeatureCollection = {
 function applyFeatureStateBatched(
   map: mapboxgl.Map,
   ids: string[],
-  visible: boolean,
+  hidden: boolean,
   opts?: { batchSize?: number }
 ) {
-  const batchSize = opts?.batchSize ?? 750;
+  const batchSize = opts?.batchSize ?? 900;
   let i = 0;
 
   const step = () => {
     const end = Math.min(i + batchSize, ids.length);
     for (; i < end; i++) {
-      map.setFeatureState({ source: MAP_SOURCE_ID, id: ids[i] }, { visible });
+      map.setFeatureState({ source: MAP_SOURCE_ID, id: ids[i] }, { hidden });
     }
     if (i < ids.length) requestAnimationFrame(step);
   };
@@ -134,7 +141,10 @@ export default function ResourceFinder() {
   // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCounties, setSelectedCounties] = useState<County[]>([]);
+
+  // ✅ Single county selection (empty string means none selected)
+  const [selectedCounty, setSelectedCounty] = useState<County | "">("");
+
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
@@ -155,7 +165,7 @@ export default function ResourceFinder() {
   const [perPage, setPerPage] = useState<PerPageOption>(12);
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
-  // Map refs (map is created when in map view)
+  // Map refs (map is created once when in map view)
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
@@ -163,8 +173,14 @@ export default function ResourceFinder() {
   // Lookup for click->fly
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
 
-  // Track which ids are currently visible on the map (feature-state)
-  const visibleIdsRef = useRef<Set<string>>(new Set());
+  // All ids currently known in the map source
+  const allIdsRef = useRef<string[]>([]);
+
+  // Track which ids we previously wanted visible (for fast diff)
+  const prevWantedIdsRef = useRef<Set<string>>(new Set());
+
+  // Track a pending sync to avoid stacking work during rapid filter changes
+  const pendingSyncRef = useRef<number | null>(null);
 
   // ------------------ map helpers ------------------
   const flyToCalifornia = useCallback((opts?: { immediate?: boolean }) => {
@@ -175,7 +191,7 @@ export default function ResourceFinder() {
       map.fitBounds(CA_BOUNDS, {
         padding: 40,
         maxZoom: 6.5,
-        duration: opts?.immediate ? 0 : 650,
+        duration: opts?.immediate ? 0 : 500,
         essential: true,
       });
     };
@@ -184,6 +200,33 @@ export default function ResourceFinder() {
     else run();
   }, []);
 
+  const flyToCounty = useCallback(
+    (county: County, opts?: { immediate?: boolean }) => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      const b = CA_COUNTY_BOUNDS[county];
+      if (!b) {
+        flyToCalifornia(opts);
+        return;
+      }
+
+      const run = () => {
+        map.fitBounds(b, {
+          padding: 40,
+          maxZoom: 9,
+          duration: opts?.immediate ? 0 : 500,
+          essential: true,
+        });
+      };
+
+      if (!map.isStyleLoaded()) map.once("load", run);
+      else run();
+    },
+    [flyToCalifornia]
+  );
+
+  // ✅ Fix #1: useCallback expects an inline function expression (no cast wrapper)
   const flyToResourceId = useCallback((id: string, opts?: { immediate?: boolean }) => {
     const map = mapRef.current;
     if (!map) return;
@@ -195,7 +238,7 @@ export default function ResourceFinder() {
       map.flyTo({
         center: coords,
         zoom: 12,
-        duration: opts?.immediate ? 0 : 650,
+        duration: opts?.immediate ? 0 : 550,
         essential: true,
       });
     };
@@ -203,17 +246,6 @@ export default function ResourceFinder() {
     if (!map.isStyleLoaded()) map.once("load", run);
     else run();
   }, []);
-
-  const clearSelection = useCallback(
-    (opts?: { zoomOut?: boolean }) => {
-      setSelectedResourceId((prev) => {
-        if (!prev) return prev;
-        if (opts?.zoomOut) flyToCalifornia({ immediate: true });
-        return null;
-      });
-    },
-    [flyToCalifornia]
-  );
 
   // ------------------ location ------------------
   const requestLocation = useCallback(() => {
@@ -234,7 +266,8 @@ export default function ResourceFinder() {
         else if (error.code === error.TIMEOUT) msg = "Location request timed out.";
         setLocationError(msg);
         setSortMode("alphabetical");
-      }
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 }
     );
   }, []);
 
@@ -320,18 +353,20 @@ export default function ResourceFinder() {
   }, [allResources]);
 
   // ------------------ build ALL map features ------------------
-  const allMapGeoJson = useMemo<ResourceFeatureCollection>(() => {
+  const { allMapGeoJson, coordLookup, allIds } = useMemo(() => {
     const feats: ResourceFeature[] = [];
-    const coordLookup = new Map<string, [number, number]>();
+    const lookup = new Map<string, [number, number]>();
+    const ids: string[] = [];
 
     for (const r of indexedResources) {
       const ll = getLonLat(r);
       if (!ll) continue;
 
       const coords: [number, number] = [ll.lon, ll.lat];
-      coordLookup.set(r.id, coords);
+      lookup.set(r.id, coords);
 
       const address = [r.addressLine1, r.city, r.state, r.zip].filter(Boolean).join(", ");
+
       feats.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: coords },
@@ -342,16 +377,29 @@ export default function ResourceFinder() {
           website: r.website ?? "",
         },
       });
+
+      ids.push(r.id);
     }
 
-    coordByIdRef.current = coordLookup;
-    return { type: "FeatureCollection", features: feats };
+    return {
+      allMapGeoJson: { type: "FeatureCollection", features: feats } as ResourceFeatureCollection,
+      coordLookup: lookup,
+      allIds: ids,
+    };
   }, [indexedResources]);
+
+  useEffect(() => {
+    coordByIdRef.current = coordLookup;
+    allIdsRef.current = allIds;
+
+    // If data changes, reset our diff baseline to "everything visible"
+    prevWantedIdsRef.current = new Set(allIds);
+  }, [coordLookup, allIds]);
 
   // ------------------ fuse ------------------
   const fuse = useMemo(() => {
     return new Fuse(indexedResources, {
-      includeScore: true,
+      includeScore: false, // faster
       shouldSort: true,
       threshold: 0.35,
       distance: 200,
@@ -384,8 +432,9 @@ export default function ResourceFinder() {
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
     return searched.filter((r) => {
-      if (selectedCounties.length > 0) {
-        if (!selectedCounties.some((c) => r.countiesSet.has(c))) return false;
+      // ✅ single-county filter
+      if (selectedCounty) {
+        if (!r.countiesSet.has(selectedCounty)) return false;
       }
 
       if (audience === "Organization") {
@@ -419,37 +468,49 @@ export default function ResourceFinder() {
     indexedResources,
     fuse,
     deferredSearchQuery,
-    selectedCounties,
+    selectedCounty,
     audience,
     selectedResidentServices,
     selectedOrgServices,
     serviceDeliveryFilter,
   ]);
 
-  // Debounce what the map sees (feature-state diffs)
-  const debouncedFilteredForMap = useDebouncedValue(filtered, 150);
+  // Debounce what the map sees (avoid thrashing feature-state)
+  const debouncedFilteredForMap = useDebouncedValue(filtered, 120);
 
-  // ✅ FIX: helper that can run on load AND from effects
-  const syncMapVisibility = useCallback(
-    (map: mapboxgl.Map, wantedIds: Set<string>) => {
-      // If source/layer not ready yet, bail safely.
-      if (!map.getSource(MAP_SOURCE_ID)) return;
+  // Keep latest filter result in a ref so map init doesn’t depend on filter state
+  const debouncedFilteredForMapRef = useRef(debouncedFilteredForMap);
+  useEffect(() => {
+    debouncedFilteredForMapRef.current = debouncedFilteredForMap;
+  }, [debouncedFilteredForMap]);
 
-      const prevIds = visibleIdsRef.current;
+  // Also keep latest county in a ref for the map-on-load initial zoom
+  const selectedCountyRef = useRef<County | "">("");
+  useEffect(() => {
+    selectedCountyRef.current = selectedCounty;
+  }, [selectedCounty]);
 
-      const turnOff: string[] = [];
-      const turnOn: string[] = [];
+  // ✅ fastest possible sync: only write feature-state for ids that changed visibility
+  const syncMapVisibilityDelta = useCallback((map: mapboxgl.Map, nextWanted: Set<string>) => {
+    if (!map.getSource(MAP_SOURCE_ID)) return;
 
-      for (const id of prevIds) if (!wantedIds.has(id)) turnOff.push(id);
-      for (const id of wantedIds) if (!prevIds.has(id)) turnOn.push(id);
+    const prevWanted = prevWantedIdsRef.current;
 
-      if (turnOff.length) applyFeatureStateBatched(map, turnOff, false, { batchSize: 750 });
-      if (turnOn.length) applyFeatureStateBatched(map, turnOn, true, { batchSize: 750 });
+    const toHide: string[] = [];
+    const toShow: string[] = [];
 
-      visibleIdsRef.current = wantedIds;
-    },
-    []
-  );
+    for (const id of prevWanted) {
+      if (!nextWanted.has(id)) toHide.push(id);
+    }
+    for (const id of nextWanted) {
+      if (!prevWanted.has(id)) toShow.push(id);
+    }
+
+    if (toHide.length) applyFeatureStateBatched(map, toHide, true);
+    if (toShow.length) applyFeatureStateBatched(map, toShow, false);
+
+    prevWantedIdsRef.current = nextWanted;
+  }, []);
 
   // ------------------ sorting + pagination ------------------
   const sortedFiltered = useMemo(() => {
@@ -491,7 +552,7 @@ export default function ResourceFinder() {
     resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ------------------ MAP INIT ------------------
+  // ------------------ MAP INIT (NO FILTER DEPS — prevents reloads) ------------------
   useEffect(() => {
     if (viewMode !== "map") return;
     if (!mapContainerRef.current) return;
@@ -514,60 +575,70 @@ export default function ResourceFinder() {
     mapRef.current = map;
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
 
-    map.on("load", () => {
-      flyToCalifornia({ immediate: true });
+    const onLoad = () => {
+      if (!map.getSource(MAP_SOURCE_ID)) {
+        map.addSource(MAP_SOURCE_ID, {
+          type: "geojson",
+          data: allMapGeoJson,
+          promoteId: "id",
+        });
+      }
 
-      map.addSource(MAP_SOURCE_ID, {
-        type: "geojson",
-        data: allMapGeoJson,
-        promoteId: "id",
-      });
+      if (!map.getLayer(MAP_LAYER_ID)) {
+        map.addLayer({
+          id: MAP_LAYER_ID,
+          type: "circle",
+          source: MAP_SOURCE_ID,
+          paint: {
+            "circle-opacity": [
+              "case",
+              ["boolean", ["feature-state", "hidden"], false],
+              0.0,
+              0.85,
+            ],
+            "circle-radius": [
+              "case",
+              ["boolean", ["feature-state", "hidden"], false],
+              0,
+              6,
+            ],
+            "circle-color": "#f08024",
+            "circle-stroke-width": 0.25,
+            "circle-stroke-color": "#fff",
+          },
+        });
+      }
 
-      map.addLayer({
-        id: MAP_LAYER_ID,
-        type: "circle",
-        source: MAP_SOURCE_ID,
-        paint: {
-          "circle-opacity": [
-            "case",
-            ["boolean", ["feature-state", "visible"], false],
-            0.85,
-            0.0,
-          ],
-          "circle-radius": [
-            "case",
-            ["boolean", ["feature-state", "visible"], false],
-            6,
-            0,
-          ],
-          "circle-color": "#f08024",
-          "circle-stroke-width": 0.25,
-          "circle-stroke-color": "#fff",
-        },
-      });
+      const c = selectedCountyRef.current;
+      if (c) flyToCounty(c as County, { immediate: true });
+      else flyToCalifornia({ immediate: true });
 
-      // ✅ FIX: when map is created, DO NOT default to "everything visible".
-      // Instead, set initial visibleIdsRef to ALL ids, then immediately sync to current filter.
-      const allIds = allMapGeoJson.features.map((f) => f.properties.id);
-      visibleIdsRef.current = new Set(allIds);
+      const ids = allIdsRef.current;
+      prevWantedIdsRef.current = new Set(ids);
 
-      // Start by marking everything visible (optional), then immediately apply current filters
-      // (If you'd rather avoid a flash, you can flip these: hide all first, then show wanted)
-      applyFeatureStateBatched(map, allIds, true, { batchSize: 750 });
+      const wanted = new Set(debouncedFilteredForMapRef.current.map((r) => r.id));
+      syncMapVisibilityDelta(map, wanted);
 
-      // ✅ Apply current filtered set immediately on load
-      const wanted = new Set(debouncedFilteredForMap.map((r) => r.id));
-      syncMapVisibility(map, wanted);
-
-      // Hover tooltip
+      // ✅ Fix #2: remove EventData (not exported in your mapbox-gl types)
+      // ✅ Fix #3: no `any` — use MapboxGeoJSONFeature in type guards
       const showHover = (e: mapboxgl.MapMouseEvent) => {
-        const f = e.features?.[0] as mapboxgl.MapboxGeoJSONFeature | undefined;
+        const f = e.features?.[0];
         if (!f) return;
 
-        const geom = f.geometry as GeoJSON.Point;
-        const coords = geom.coordinates as [number, number];
-        const props = (f.properties ?? {}) as Record<string, unknown>;
+        // Determine feature id consistently (promoteId => feature.id should be string)
+        const id = typeof f.id === "string" ? f.id : "";
+        if (id) {
+          const st = map.getFeatureState({ source: MAP_SOURCE_ID, id }) as { hidden?: boolean };
+          if (st?.hidden) return;
+        }
 
+        const geom = f.geometry;
+        if (!geom || geom.type !== "Point") return;
+
+        const coords = (geom.coordinates as [number, number]) ?? null;
+        if (!coords) return;
+
+        const props = (f.properties ?? {}) as Record<string, unknown>;
         const name = String(props.name ?? "");
         const address = String(props.address ?? "");
 
@@ -602,56 +673,103 @@ export default function ResourceFinder() {
       map.on("mousemove", MAP_LAYER_ID, showHover);
 
       map.on("click", MAP_LAYER_ID, (e) => {
-        const f = e.features?.[0] as mapboxgl.MapboxGeoJSONFeature | undefined;
+        const f = e.features?.[0];
         if (!f) return;
-        const props = (f.properties ?? {}) as Record<string, unknown>;
-        const id = String(props.id ?? "");
+
+        const id = typeof f.id === "string" ? f.id : "";
         if (!id) return;
+
+        const st = map.getFeatureState({ source: MAP_SOURCE_ID, id }) as { hidden?: boolean };
+        if (st?.hidden) return;
 
         setSelectedResourceId(id);
         flyToResourceId(id);
       });
-    });
+    };
+
+    map.on("load", onLoad);
 
     return () => {
+      if (pendingSyncRef.current) {
+        cancelAnimationFrame(pendingSyncRef.current);
+        pendingSyncRef.current = null;
+      }
+
       hoverPopupRef.current?.remove();
       hoverPopupRef.current = null;
 
       map.remove();
       mapRef.current = null;
     };
-  }, [viewMode, allMapGeoJson, flyToCalifornia, flyToResourceId, debouncedFilteredForMap, syncMapVisibility]);
+  }, [
+    viewMode,
+    allMapGeoJson,
+    flyToCalifornia,
+    flyToCounty,
+    flyToResourceId,
+    syncMapVisibilityDelta,
+  ]);
 
-  // ------------------ MAP FILTERING via diffs ------------------
+  // ------------------ Keep map source data updated without re-init ------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const run = () => {
+      const src = map.getSource(MAP_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+      if (!src) return;
+
+      src.setData(allMapGeoJson);
+
+      prevWantedIdsRef.current = new Set(allIdsRef.current);
+
+      const wanted = new Set(debouncedFilteredForMapRef.current.map((r) => r.id));
+      syncMapVisibilityDelta(map, wanted);
+    };
+
+    if (!map.isStyleLoaded()) map.once("load", run);
+    else run();
+  }, [allMapGeoJson, syncMapVisibilityDelta]);
+
+  // ------------------ MAP FILTERING via diffs (SUPER smooth) ------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const run = () => {
       if (!map.getSource(MAP_SOURCE_ID)) return;
+
       const wanted = new Set(debouncedFilteredForMap.map((r) => r.id));
-      syncMapVisibility(map, wanted);
+
+      if (pendingSyncRef.current) cancelAnimationFrame(pendingSyncRef.current);
+      pendingSyncRef.current = requestAnimationFrame(() => {
+        pendingSyncRef.current = null;
+        syncMapVisibilityDelta(map, wanted);
+      });
     };
 
-    // ✅ FIX: if user is in table view, map might not exist (fine).
-    // If map exists but isn't loaded yet, schedule once.
     if (!map.isStyleLoaded()) {
       map.once("load", run);
       return;
     }
 
     run();
-  }, [debouncedFilteredForMap, syncMapVisibility]);
+  }, [debouncedFilteredForMap, syncMapVisibilityDelta]);
 
-  // Zoom behavior ONLY when selection changes
+  // ✅ County zoom behavior (only when NO resource is selected)
   useEffect(() => {
     if (viewMode !== "map") return;
+    if (selectedResourceId) return;
 
-    if (selectedResourceId) flyToResourceId(selectedResourceId);
+    if (selectedCounty) flyToCounty(selectedCounty as County);
     else flyToCalifornia();
+  }, [viewMode, selectedCounty, selectedResourceId, flyToCounty, flyToCalifornia]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedResourceId, viewMode]);
+  // Zoom behavior ONLY when selection changes (resource overrides county zoom)
+  useEffect(() => {
+    if (viewMode !== "map") return;
+    if (selectedResourceId) flyToResourceId(selectedResourceId);
+  }, [selectedResourceId, viewMode, flyToResourceId]);
 
   // ------------------ handlers ------------------
   const onAudienceChange = (next: Audience) => {
@@ -659,31 +777,26 @@ export default function ResourceFinder() {
     setSelectedResidentServices([]);
     setSelectedOrgServices([]);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
   const onSearchChange = (next: string) => {
     setSearchQuery(next);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
-  const toggleCounty = (c: County) => {
-    setSelectedCounties((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  const onCountyChange = (next: County | "") => {
+    setSelectedCounty(next);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
-  const selectAllCounties = () => {
-    setSelectedCounties([...COUNTIES]);
+  const clearCounty = () => {
+    setSelectedCounty("");
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
-  };
-
-  const clearCounties = () => {
-    setSelectedCounties([]);
-    setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
+    if (viewMode === "map") flyToCalifornia();
   };
 
   const toggleResidentService = (svc: Service) => {
@@ -691,7 +804,7 @@ export default function ResourceFinder() {
       prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
     );
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
   const toggleOrgService = (svc: OrgService) => {
@@ -699,36 +812,31 @@ export default function ResourceFinder() {
       prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
     );
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
   const selectAllResidentServices = () => {
     setSelectedResidentServices([...SERVICES]);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
   const clearResidentServices = () => {
     setSelectedResidentServices([]);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
   const selectAllOrgServices = () => {
     setSelectedOrgServices([...ORG_SERVICES]);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
+    setSelectedResourceId(null);
   };
 
   const clearOrgServices = () => {
     setSelectedOrgServices([]);
     setCurrentPage(1);
-    clearSelection({ zoomOut: true });
-  };
-
-  const onBackToAll = () => {
     setSelectedResourceId(null);
-    flyToCalifornia();
   };
 
   // ------------------ options ------------------
@@ -737,7 +845,11 @@ export default function ResourceFinder() {
     { value: "Organization", label: "Organization" },
   ];
 
-  const countyOptions = COUNTIES.map((c) => ({ value: c, label: `${c} County` }));
+  const countyOptions: SelectOption<County | "">[] = [
+    { value: "", label: "Any county" },
+    ...COUNTIES.map((c) => ({ value: c, label: `${c} County` })),
+  ];
+
   const residentOptions = SERVICES.map((s) => ({ value: s, label: labelForService(s) }));
   const orgOptions = ORG_SERVICES.map((s) => ({ value: s, label: labelForOrgService(s) }));
 
@@ -752,7 +864,6 @@ export default function ResourceFinder() {
             : v,
     })
   );
-
 
   const sortOptions: SelectOption<SortMode>[] = [
     { value: "alphabetical", label: "A-Z" },
@@ -839,21 +950,24 @@ export default function ResourceFinder() {
               </div>
 
               <div className="col-12 col-lg-6 m-b-sm">
-                <MultiSelect
-                  id="county-multiselect"
+                <SingleSelect
+                  id="county-select"
                   labelNode={
                     <>
-                      <span>I am located in... (select all that apply)</span>
-                      <Tooltip text="Select one or more counties to filter results. Clear to show resources across California." />
+                      <span>I am located in...</span>
+                      <Tooltip text="Select a county to filter results. Choose 'Any county' to clear." />
                     </>
                   }
                   placeholder="Any county"
                   options={countyOptions}
-                  selected={selectedCounties}
-                  onToggle={(val: County) => toggleCounty(val)}
-                  onSelectAll={selectAllCounties}
-                  onClear={clearCounties}
+                  value={selectedCounty}
+                  onChange={(v) => onCountyChange(v)}
                 />
+                {!!selectedCounty && (
+                  <button type="button" className="btn btn-link p-0 mt-1" onClick={clearCounty}>
+                    Clear county
+                  </button>
+                )}
               </div>
             </div>
 
@@ -962,11 +1076,7 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
-                      />
+                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -1018,7 +1128,7 @@ export default function ResourceFinder() {
                   labelNode={
                     <>
                       <span>Service delivery</span>
-                      <Tooltip text="Filter results by how the organization provides services (virtually, in-person, or either)." />
+                      <Tooltip text="Filter results by how the organization provides services (virtual, in-person, or either)." />
                     </>
                   }
                   placeholder="Service delivery"
@@ -1027,7 +1137,7 @@ export default function ResourceFinder() {
                   onChange={(v) => {
                     setServiceDeliveryFilter(v);
                     setCurrentPage(1);
-                    clearSelection({ zoomOut: true });
+                    setSelectedResourceId(null);
                   }}
                 />
               </div>
@@ -1119,7 +1229,7 @@ export default function ResourceFinder() {
                       <button
                         type="button"
                         className="btn btn-outline-primary w-100"
-                        onClick={onBackToAll}
+                        onClick={() => setSelectedResourceId(null)}
                       >
                         Back to all results
                       </button>
@@ -1137,7 +1247,9 @@ export default function ResourceFinder() {
                           : "Supports / services for organizations";
 
                       const freeLowCostToShow =
-                        audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
+                        audience === "Resident"
+                          ? r.freeLowCostResidents
+                          : r.freeLowCostOrganizations;
 
                       return (
                         <div key={r.id}>
