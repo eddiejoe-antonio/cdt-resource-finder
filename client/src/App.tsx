@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
+import TranslateBar from "./components/TranslateBar";
 
 const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
 const PAGE_LANG = "en";
@@ -86,6 +87,7 @@ export default function App() {
 
   return (
     <div>
+      <TranslateBar />
       <ResourceFinder />
     </div>
   );
