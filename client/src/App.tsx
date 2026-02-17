@@ -4,7 +4,7 @@ import { fetchResourcesLocal } from "./utils/fetchResources";
 import ResourceFinder from "./components/ResourceFinder";
 import TranslateBar from "./components/TranslateBar";
 
-const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go"; // must match WP page origin exactly
+const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
 const PAGE_LANG = "en";
 
 type ParentMsg =
@@ -12,7 +12,7 @@ type ParentMsg =
   | { type: string; [k: string]: unknown };
 
 function normalizeLang(raw: string) {
-  const lang = raw.trim().toLowerCase();
+  const lang = raw.trim();
   return lang || PAGE_LANG;
 }
 
@@ -20,17 +20,15 @@ function getCookie(name: string): string | null {
   const hit = document.cookie
     .split("; ")
     .find((c) => c.toLowerCase().startsWith(name.toLowerCase() + "="));
-  return hit ? hit.split("=").slice(1).join("=") ?? null : null;
+  return hit ? hit.split("=")[1] ?? null : null;
 }
 
 function setGoogTransCookie(targetLang: string) {
-  // google translate cookie format:
-  // googtrans=/en/es
   const value = `/${PAGE_LANG}/${targetLang}`;
 
-  // Modern cookie flags (helps in some embedded contexts, but can't bypass browser restrictions)
+  // Try the modern flags first (needed for 3rd-party iframe cookies in many cases)
   document.cookie = `googtrans=${value}; path=/; SameSite=None; Secure`;
-  // Fallback
+  // Fallback (older behavior)
   document.cookie = `googtrans=${value}; path=/`;
 }
 
@@ -45,15 +43,10 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Handshake: ask parent for current language as soon as iframe loads
-  useEffect(() => {
-    window.parent.postMessage({ type: "IFRAME_READY" }, PARENT_ORIGIN);
-  }, []);
-
   // Receive language changes from WordPress parent
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      // Security: only accept messages from your WP host origin
+      // Security: only accept messages from your WP host
       if (e.origin !== PARENT_ORIGIN) return;
 
       const data = e.data as ParentMsg;
@@ -62,14 +55,13 @@ export default function App() {
 
       const nextLang = normalizeLang(String(data.lang ?? PAGE_LANG));
 
-      // If language is "en" (or same as PAGE_LANG), you can optionally clear cookie.
-      // But keeping it consistent is fine.
+      // Set cookie
       setGoogTransCookie(nextLang);
 
-      // Check whether cookie actually stuck (often blocked in third-party iframe contexts)
+      // Check whether cookie actually stuck (3rd-party iframe cookies often blocked)
       const cookieAfter = getCookie("googtrans");
 
-      // Tell parent what happened (useful for debugging / future fallback strategies)
+      // Tell parent what happened so it can fall back to proxy URL if needed
       window.parent.postMessage(
         {
           type: "IFRAME_TRANSLATE_ACK",
@@ -79,7 +71,7 @@ export default function App() {
         PARENT_ORIGIN
       );
 
-      // If cookie didn't stick, reloading won't help.
+      // If cookie didn't stick, reloading won't help — parent will fall back.
       if (!cookieAfter) return;
 
       // Reload so Google Translate applies cleanly
@@ -95,11 +87,6 @@ export default function App() {
 
   return (
     <div>
-      {/*
-        Keep TranslateBar ONLY if it is what loads the Google Translate script into the iframe.
-        If TranslateBar is just a UI control (and you want to use the parent UI), you can remove it.
-        BUT: the translate engine must still exist inside the iframe for it to actually translate.
-      */}
       <TranslateBar />
       <ResourceFinder />
     </div>
