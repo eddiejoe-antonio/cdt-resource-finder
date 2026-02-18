@@ -57,6 +57,14 @@ export const ResourceCard: React.FC<Props> = ({
   }, [servicesToShow, fallbackServicesText]);
 
   const iconStyle: React.CSSProperties = { fontSize: "1.5rem", lineHeight: 1 };
+// src/components/ResourceCard.tsx
+
+  const addressLink = useMemo(() => {
+    // only link if we actually have a URL and an address
+    if (!address) return "";
+    return resource.googleMapsUrl?.trim() || "";
+  }, [address, resource.googleMapsUrl]);
+
 
   return (
     <article className="card h-100">
@@ -72,10 +80,23 @@ export const ResourceCard: React.FC<Props> = ({
                   aria-hidden="true"
                   style={iconStyle}
                 />
-                <span className="text-normal">{address}</span>
+
+                {addressLink ? (
+                  <a
+                    href={addressLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-normal min-w-0"
+                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                    aria-label={`Open ${resource.name || "this location"} in Google Maps (opens in a new tab)`}
+                  >
+                    {address}
+                  </a>
+                ) : (
+                  <span className="text-normal">{address}</span>
+                )}
               </li>
             )}
-
             {servicesText && (
               <li className="d-flex align-items-start m-b-sm">
                 <span

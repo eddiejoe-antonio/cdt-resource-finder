@@ -25,6 +25,7 @@ export function mapRowToResource(row: Row, index: number): Resource {
 
     orgType: s(row["Type of Organization"]) || undefined,
     serviceArea: s(row["5. What is your entity/organization's service area?"]) || undefined,
+    physicalCounty: s(row["physical_county"]) || undefined,
 
     servicesIndividuals:
       s(

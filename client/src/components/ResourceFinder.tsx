@@ -76,6 +76,16 @@ function getLonLat(r: Resource): { lon: number; lat: number } | null {
   return { lat, lon };
 }
 
+/**
+ * Your CSV now includes `physical_county` (NAME from the CA counties geojson).
+ * Make sure `Resource` includes:
+ *   physicalCounty?: string;
+ * (and that fetchResources maps physical_county -> physicalCounty)
+ */
+function normalizeCountyMaybe(v: unknown): string {
+  return normalizeValue(String(v ?? ""));
+}
+
 type IndexedResource = Resource & {
   countiesSet: Set<County>;
   servicesSet: Set<Service>;
@@ -89,6 +99,9 @@ type IndexedResource = Resource & {
   // derived from Q8 + address
   hasVirtual: boolean;
   hasInPerson: boolean;
+
+  // ✅ NEW: normalized physical county for sorting boosts
+  physicalCountyNorm: string; // "" if missing
 };
 
 type ResourceFeatureProps = {
@@ -333,6 +346,10 @@ export default function ResourceFinder() {
       // ✅ FIX: pass Address Line 1 ("Virtual") into flags normalization
       const flags = normalizeServiceDeliveryFlags(r.serviceDelivery, r.addressLine1);
 
+      // ✅ NEW: normalize physical county for sorting.
+      // Expect r.physicalCounty to be like "Alameda" (from geojson NAME)
+      const physicalCountyNorm = normalizeCountyMaybe((r as Resource & { physicalCounty?: string }).physicalCounty);
+
       return {
         ...r,
         countiesSet: new Set(counties),
@@ -346,6 +363,8 @@ export default function ResourceFinder() {
 
         hasInPerson: flags.hasInPerson,
         hasVirtual: flags.hasVirtual,
+
+        physicalCountyNorm,
       };
     });
   }, [allResources]);
@@ -428,6 +447,8 @@ export default function ResourceFinder() {
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
     return searched.filter((r) => {
+      // ✅ keep your existing meaning of the county filter:
+      // it filters to providers that SAY they serve the selected county.
       if (selectedCounty) {
         if (!r.countiesSet.has(selectedCounty)) return false;
       }
@@ -508,21 +529,42 @@ export default function ResourceFinder() {
   const sortedFiltered = useMemo(() => {
     const sorted = [...filtered];
 
-    if (sortMode === "proximity" && userLocation) {
-      const withDistances = sorted.map((r) => {
-        const ll = getLonLat(r);
-        const d = ll
-          ? calculateDistance(userLocation.lat, userLocation.lon, ll.lat, ll.lon)
-          : Infinity;
-        return { r, d };
-      });
-      withDistances.sort((a, b) => a.d - b.d);
-      return withDistances.map((x) => x.r);
-    }
+    // ✅ NEW LOGIC:
+    // If a county is selected, boost resources whose *physical location* is in that county
+    // (based on your new field `physicalCounty`).
+    const selectedCountyNorm = selectedCounty ? normalizeValue(selectedCounty) : "";
 
-    sorted.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    // If using "proximity", compute distances once; otherwise Infinity.
+    const dist = (r: Resource) => {
+      if (sortMode !== "proximity" || !userLocation) return Infinity;
+      const ll = getLonLat(r);
+      return ll ? calculateDistance(userLocation.lat, userLocation.lon, ll.lat, ll.lon) : Infinity;
+    };
+
+    sorted.sort((a, b) => {
+      // 1) Physical-county boost when county is selected
+      if (selectedCountyNorm) {
+        const aMatch = a.physicalCountyNorm && a.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
+        const bMatch = b.physicalCountyNorm && b.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
+        if (aMatch !== bMatch) return bMatch - aMatch; // match first
+      }
+
+      // 2) Then apply your existing sort mode within each group
+      if (sortMode === "proximity" && userLocation) {
+        const da = dist(a);
+        const db = dist(b);
+        if (da !== db) return da - db;
+
+        // tie-breaker
+        return (a.name ?? "").localeCompare(b.name ?? "");
+      }
+
+      // alphabetical default
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
+
     return sorted;
-  }, [filtered, sortMode, userLocation, calculateDistance]);
+  }, [filtered, selectedCounty, sortMode, userLocation, calculateDistance]);
 
   const effectivePerPage = useMemo(() => {
     if (perPage === "all") return sortedFiltered.length || 1;
@@ -780,13 +822,6 @@ export default function ResourceFinder() {
     setSelectedResourceId(null);
   };
 
-  const clearCounty = () => {
-    setSelectedCounty("");
-    setCurrentPage(1);
-    setSelectedResourceId(null);
-    if (viewMode === "map") flyToCalifornia();
-  };
-
   const toggleResidentService = (svc: Service) => {
     setSelectedResidentServices((prev) =>
       prev.includes(svc) ? prev.filter((x) => x !== svc) : [...prev, svc]
@@ -950,12 +985,10 @@ export default function ResourceFinder() {
                   options={countyOptions}
                   value={selectedCounty}
                   onChange={(v) => onCountyChange(v)}
+                  clearable
+                  onClear={() => onCountyChange("")}
+                  clearAriaLabel="Clear county"
                 />
-                {!!selectedCounty && (
-                  <button type="button" className="btn btn-link p-0 mt-1" onClick={clearCounty}>
-                    Clear county
-                  </button>
-                )}
               </div>
             </div>
 
@@ -1130,10 +1163,7 @@ export default function ResourceFinder() {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label
-                      className="form-label d-inline-flex align-items-center"
-                      htmlFor="view-toggle"
-                    >
+                    <label className="form-label d-inline-flex align-items-center" htmlFor="view-toggle">
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>

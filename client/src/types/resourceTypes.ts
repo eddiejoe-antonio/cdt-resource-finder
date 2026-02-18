@@ -7,7 +7,7 @@ export type Resource = {
   city?: string;
   state?: string;
   zip?: string;
-
+  googleMapsUrl?: string;
   phone?: string;
   website?: string;
 
@@ -17,6 +17,7 @@ export type Resource = {
 
   orgType?: string;
   serviceArea?: string;
+  physicalCounty?: string;
 
   // Existing display field you already use in ResourceCard
   servicesIndividuals?: string;
