@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ResourceFinder from "./components/ResourceFinder";
-import TranslateBar from "./components/TranslateBar";
+// import TranslateBar from "./components/TranslateBar";
 
 const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
 const PAGE_LANG = "en";
@@ -113,7 +113,7 @@ export default function App() {
 
   return (
     <div>
-      <TranslateBar />
+      {/* <TranslateBar /> */}
 
       {translateNotice && (
         <div className="p-2" role="status" aria-live="polite">
