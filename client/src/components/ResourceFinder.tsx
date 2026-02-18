@@ -16,6 +16,7 @@ import { ResourceCard } from "./ResourceCard";
 import ViewToggle, { type ViewMode } from "./ViewToggle";
 import Pagination from "./Pagination";
 import { Tooltip } from "./Tooltip";
+import TranslateDropdown from "./TranslateDropdown";
 
 import {
   COUNTIES,
@@ -76,12 +77,6 @@ function getLonLat(r: Resource): { lon: number; lat: number } | null {
   return { lat, lon };
 }
 
-/**
- * Your CSV now includes `physical_county` (NAME from the CA counties geojson).
- * Make sure `Resource` includes:
- *   physicalCounty?: string;
- * (and that fetchResources maps physical_county -> physicalCounty)
- */
 function normalizeCountyMaybe(v: unknown): string {
   return normalizeValue(String(v ?? ""));
 }
@@ -96,11 +91,9 @@ type IndexedResource = Resource & {
   orgServicesLabels: string[];
   hasOrgServices: boolean;
 
-  // derived from Q8 + address
   hasVirtual: boolean;
   hasInPerson: boolean;
 
-  // ✅ NEW: normalized physical county for sorting boosts
   physicalCountyNorm: string; // "" if missing
 };
 
@@ -152,14 +145,11 @@ export default function ResourceFinder() {
   // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
-
-  // ✅ Single county selection (empty string means none selected)
   const [selectedCounty, setSelectedCounty] = useState<County | "">("");
 
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
-  // Service delivery (Q8)
   const [serviceDeliveryFilter, setServiceDeliveryFilter] =
     useState<ServiceDeliveryFilter>("Either Virtually or In-Person");
 
@@ -181,16 +171,9 @@ export default function ResourceFinder() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
 
-  // Lookup for click->fly
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
-
-  // All ids currently known in the map source
   const allIdsRef = useRef<string[]>([]);
-
-  // Track which ids we previously wanted visible (for fast diff)
   const prevWantedIdsRef = useRef<Set<string>>(new Set());
-
-  // Track a pending sync to avoid stacking work during rapid filter changes
   const pendingSyncRef = useRef<number | null>(null);
 
   // ------------------ map helpers ------------------
@@ -343,12 +326,11 @@ export default function ResourceFinder() {
         .map((n) => orgServiceMap.get(n))
         .filter((v): v is OrgService => Boolean(v));
 
-      // ✅ FIX: pass Address Line 1 ("Virtual") into flags normalization
       const flags = normalizeServiceDeliveryFlags(r.serviceDelivery, r.addressLine1);
 
-      // ✅ NEW: normalize physical county for sorting.
-      // Expect r.physicalCounty to be like "Alameda" (from geojson NAME)
-      const physicalCountyNorm = normalizeCountyMaybe((r as Resource & { physicalCounty?: string }).physicalCounty);
+      const physicalCountyNorm = normalizeCountyMaybe(
+        (r as Resource & { physicalCounty?: string }).physicalCounty
+      );
 
       return {
         ...r,
@@ -447,8 +429,6 @@ export default function ResourceFinder() {
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
     return searched.filter((r) => {
-      // ✅ keep your existing meaning of the county filter:
-      // it filters to providers that SAY they serve the selected county.
       if (selectedCounty) {
         if (!r.countiesSet.has(selectedCounty)) return false;
       }
@@ -491,10 +471,7 @@ export default function ResourceFinder() {
     serviceDeliveryFilter,
   ]);
 
-  // Debounce what the map sees (avoid thrashing feature-state)
   const debouncedFilteredForMap = useDebouncedValue(filtered, 120);
-
-  // Keep latest filter result in a ref so map init doesn’t depend on filter state
   const debouncedFilteredForMapRef = useRef(debouncedFilteredForMap);
   useEffect(() => {
     debouncedFilteredForMapRef.current = debouncedFilteredForMap;
@@ -512,12 +489,8 @@ export default function ResourceFinder() {
     const toHide: string[] = [];
     const toShow: string[] = [];
 
-    for (const id of prevWanted) {
-      if (!nextWanted.has(id)) toHide.push(id);
-    }
-    for (const id of nextWanted) {
-      if (!prevWanted.has(id)) toShow.push(id);
-    }
+    for (const id of prevWanted) if (!nextWanted.has(id)) toHide.push(id);
+    for (const id of nextWanted) if (!prevWanted.has(id)) toShow.push(id);
 
     if (toHide.length) applyFeatureStateBatched(map, toHide, true);
     if (toShow.length) applyFeatureStateBatched(map, toShow, false);
@@ -528,13 +501,8 @@ export default function ResourceFinder() {
   // ------------------ sorting + pagination ------------------
   const sortedFiltered = useMemo(() => {
     const sorted = [...filtered];
-
-    // ✅ NEW LOGIC:
-    // If a county is selected, boost resources whose *physical location* is in that county
-    // (based on your new field `physicalCounty`).
     const selectedCountyNorm = selectedCounty ? normalizeValue(selectedCounty) : "";
 
-    // If using "proximity", compute distances once; otherwise Infinity.
     const dist = (r: Resource) => {
       if (sortMode !== "proximity" || !userLocation) return Infinity;
       const ll = getLonLat(r);
@@ -542,24 +510,19 @@ export default function ResourceFinder() {
     };
 
     sorted.sort((a, b) => {
-      // 1) Physical-county boost when county is selected
       if (selectedCountyNorm) {
         const aMatch = a.physicalCountyNorm && a.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
         const bMatch = b.physicalCountyNorm && b.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
-        if (aMatch !== bMatch) return bMatch - aMatch; // match first
+        if (aMatch !== bMatch) return bMatch - aMatch;
       }
 
-      // 2) Then apply your existing sort mode within each group
       if (sortMode === "proximity" && userLocation) {
         const da = dist(a);
         const db = dist(b);
         if (da !== db) return da - db;
-
-        // tie-breaker
         return (a.name ?? "").localeCompare(b.name ?? "");
       }
 
-      // alphabetical default
       return (a.name ?? "").localeCompare(b.name ?? "");
     });
 
@@ -731,14 +694,7 @@ export default function ResourceFinder() {
       map.remove();
       mapRef.current = null;
     };
-  }, [
-    viewMode,
-    allMapGeoJson,
-    flyToCalifornia,
-    flyToCounty,
-    flyToResourceId,
-    syncMapVisibilityDelta,
-  ]);
+  }, [viewMode, allMapGeoJson, flyToCalifornia, flyToCounty, flyToResourceId, syncMapVisibilityDelta]);
 
   // Keep map source updated when data changes
   useEffect(() => {
@@ -876,17 +832,15 @@ export default function ResourceFinder() {
   const residentOptions = SERVICES.map((s) => ({ value: s, label: labelForService(s) }));
   const orgOptions = ORG_SERVICES.map((s) => ({ value: s, label: labelForOrgService(s) }));
 
-  const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map(
-    (v) => ({
-      value: v,
-      label:
-        v === "Virtually"
-          ? "Virtual"
-          : v === "Either Virtually or In-Person"
-          ? "Either Virtual or In-Person"
-          : v,
-    })
-  );
+  const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map((v) => ({
+    value: v,
+    label:
+      v === "Virtually"
+        ? "Virtual"
+        : v === "Either Virtually or In-Person"
+        ? "Either Virtual or In-Person"
+        : v,
+  }));
 
   const sortOptions: SelectOption<SortMode>[] = [
     { value: "alphabetical", label: "A-Z" },
@@ -911,7 +865,6 @@ export default function ResourceFinder() {
     );
   };
 
-  // side pane resources
   const sidePanelResources = useMemo(() => {
     if (!selectedResourceId) return sortedFiltered;
     const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
@@ -924,32 +877,61 @@ export default function ResourceFinder() {
   return (
     <div className="container-fluid">
       {/* Header */}
-      <header className="m-y-lg md:mx-32 lg:mx-64">
-        <h2 className="h2 bg-[#1f2576] text-white py-8 px-4">
-          <span
-            className="inline-block"
-            style={{
-              backgroundImage: "linear-gradient(#f97316,#f97316)",
-              backgroundRepeat: "no-repeat",
-              backgroundSize: "100% 4px",
-              backgroundPosition: "0 100%",
-              paddingBottom: "6px",
-            }}
-          >
-            Digital Equity
-          </span>{" "}
-          Resource Finder
-        </h2>
-        <p className="m-t-md px-4">
-          Welcome to the California Digital Equity Resource Finder – a tool designed to assist
-          residents and organizations to find digital inclusion programs and services in their
-          communities. The Resource Finder was updated in January 2026.
-        </p>
-        <p className="m-t-md px-4">
-          Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
-          training.
-        </p>
-      </header>
+<header className="m-y-lg md:mx-32 lg:mx-64">
+  {/* ✅ Blue header bar with responsive layout */}
+  <div
+    className="text-white py-4 px-4"
+    style={{
+      background: "#1f2576",
+      display: "flex",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 12,
+      justifyContent: "space-between",
+    }}
+  >
+    <div style={{ minWidth: 0, flex: "1 1 420px" }}>
+      <div
+        className="h2 m-0"
+        style={{
+          fontWeight: 800,
+          lineHeight: 1.1,
+        }}
+      >
+        <span
+          className="inline-block"
+          style={{
+            backgroundImage: "linear-gradient(#f97316,#f97316)",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "100% 4px",
+            backgroundPosition: "0 100%",
+            paddingBottom: "6px",
+          }}
+        >
+          Digital Equity
+        </span>{" "}
+        Resource Finder
+      </div>
+    </div>
+
+    {/* ✅ On small screens this wraps under the title automatically */}
+    <div style={{ flex: "0 1 320px", minWidth: 220 }}>
+      <TranslateDropdown />
+    </div>
+  </div>
+
+  <p className="m-t-md px-4">
+    Welcome to the California Digital Equity Resource Finder – a tool designed to assist
+    residents and organizations to find digital inclusion programs and services in their
+    communities. The Resource Finder was updated in January 2026.
+  </p>
+
+  <p className="m-t-md px-4">
+    Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
+    training.
+  </p>
+</header>
+
 
       {/* Filters */}
       <section className="m-b-md bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
@@ -1090,11 +1072,7 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
-                      />
+                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -1174,10 +1152,7 @@ export default function ResourceFinder() {
                         handleNavigate={(view) => {
                           setViewMode(view);
                           if (view === "map") {
-                            resultsTopRef.current?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            });
+                            resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                           }
                         }}
                       />
@@ -1241,6 +1216,7 @@ export default function ResourceFinder() {
 
             <div className="col-12 col-lg-4">
               <div className="card" aria-label="Results list">
+                {/* Side panel scroll only (this is the behavior you want) */}
                 <div className="card-body p-0" style={{ maxHeight: "70vh", overflow: "auto" }}>
                   {selectedResourceId && (
                     <div className="m-b-sm">
@@ -1256,18 +1232,13 @@ export default function ResourceFinder() {
 
                   <div className="d-flex flex-column gap-3">
                     {sidePanelResources.map((r) => {
-                      const servicesToShow =
-                        audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+                      const servicesToShow = audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
 
                       const servicesLabel =
-                        audience === "Resident"
-                          ? "Services"
-                          : "Supports / services for organizations";
+                        audience === "Resident" ? "Services" : "Supports / services for organizations";
 
                       const freeLowCostToShow =
-                        audience === "Resident"
-                          ? r.freeLowCostResidents
-                          : r.freeLowCostOrganizations;
+                        audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
 
                       return (
                         <div key={r.id}>
@@ -1304,8 +1275,7 @@ export default function ResourceFinder() {
           <>
             <div className="row">
               {pageResources.map((r) => {
-                const servicesToShow =
-                  audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+                const servicesToShow = audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
 
                 const servicesLabel =
                   audience === "Resident" ? "Services" : "Supports / services for organizations";
