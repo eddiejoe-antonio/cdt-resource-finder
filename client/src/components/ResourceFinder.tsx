@@ -1,5 +1,5 @@
 // src/components/ResourceFinder.tsx
-import {
+import React, {
   useCallback,
   useDeferredValue,
   useEffect,
@@ -72,7 +72,6 @@ function isEmbeddedNow(): boolean {
     return true;
   }
 }
-
 
 function getLonLat(r: Resource): { lon: number; lat: number } | null {
   const lat = r.lat;
@@ -152,6 +151,7 @@ function applyFeatureStateBatched(
 
 export default function ResourceFinder() {
   const isEmbedded = isEmbeddedNow();
+
   const [allResources, setAllResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -711,7 +711,14 @@ export default function ResourceFinder() {
       map.remove();
       mapRef.current = null;
     };
-  }, [viewMode, allMapGeoJson, flyToCalifornia, flyToCounty, flyToResourceId, syncMapVisibilityDelta]);
+  }, [
+    viewMode,
+    allMapGeoJson,
+    flyToCalifornia,
+    flyToCounty,
+    flyToResourceId,
+    syncMapVisibilityDelta,
+  ]);
 
   // Keep map source updated when data changes
   useEffect(() => {
@@ -849,15 +856,17 @@ export default function ResourceFinder() {
   const residentOptions = SERVICES.map((s) => ({ value: s, label: labelForService(s) }));
   const orgOptions = ORG_SERVICES.map((s) => ({ value: s, label: labelForOrgService(s) }));
 
-  const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map((v) => ({
-    value: v,
-    label:
-      v === "Virtually"
-        ? "Virtual"
-        : v === "Either Virtually or In-Person"
-        ? "Either Virtual or In-Person"
-        : v,
-  }));
+  const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map(
+    (v) => ({
+      value: v,
+      label:
+        v === "Virtually"
+          ? "Virtual"
+          : v === "Either Virtually or In-Person"
+          ? "Either Virtual or In-Person"
+          : v,
+    })
+  );
 
   const sortOptions: SelectOption<SortMode>[] = [
     { value: "alphabetical", label: "A-Z" },
@@ -891,14 +900,56 @@ export default function ResourceFinder() {
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
-  // EMBED MODE CHANGES:
-  // - Remove the side panel internal scrollbar when embedded (prevents 2nd scrollbar)
-  const sidePanelBodyStyle: React.CSSProperties | undefined = isEmbedded
-    ? undefined
-    : { maxHeight: "70vh", overflow: "auto" };
+  /**
+   * ✅ The core fix:
+   * - In embedded mode, DO NOT allow the app to scroll.
+   * - The map + side panel sit inside a fixed-height row.
+   * - ONLY the side panel body is scrollable.
+   */
+  const appRootStyle: React.CSSProperties | undefined = isEmbedded
+    ? { height: "100vh", overflow: "hidden" }
+    : undefined;
+
+  // Only needed so the map row can fill the remaining space cleanly.
+  const mapRowViewportStyle: React.CSSProperties | undefined = isEmbedded
+    ? {
+        height: "70vh", // pick your desired “main content” height inside the iframe
+        minHeight: 520,
+      }
+    : undefined;
+
+  const mapCardFillStyle: React.CSSProperties | undefined = isEmbedded
+    ? { height: "100%" }
+    : undefined;
+
+  const mapContainerStyle: React.CSSProperties = isEmbedded
+    ? {
+        width: "100%",
+        height: "100%",
+        minHeight: "100%",
+        borderRadius: "4px",
+      }
+    : {
+        width: "100%",
+        height: "70vh",
+        minHeight: "420px",
+        borderRadius: "4px",
+      };
+
+  // ✅ This is the ONLY scrollbar in embed mode.
+  const sidePanelBodyStyle: React.CSSProperties = isEmbedded
+    ? {
+        height: "100%",
+        overflowY: "auto",
+        overflowX: "hidden",
+      }
+    : {
+        maxHeight: "70vh",
+        overflow: "auto",
+      };
 
   return (
-    <div className="container-fluid">
+    <div className="container-fluid" style={appRootStyle}>
       {/* Header */}
       <header className="m-y-lg md:mx-32 lg:mx-64">
         <h2 className="h2 bg-[#1f2576] text-white py-8 px-4">
@@ -1068,7 +1119,11 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
+                      />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -1137,7 +1192,10 @@ export default function ResourceFinder() {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label className="form-label d-inline-flex align-items-center" htmlFor="view-toggle">
+                    <label
+                      className="form-label d-inline-flex align-items-center"
+                      htmlFor="view-toggle"
+                    >
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>
@@ -1148,7 +1206,10 @@ export default function ResourceFinder() {
                         handleNavigate={(view) => {
                           setViewMode(view);
                           if (view === "map") {
-                            resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            resultsTopRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
                           }
                         }}
                       />
@@ -1193,25 +1254,19 @@ export default function ResourceFinder() {
         </div>
 
         {viewMode === "map" ? (
-          <div className="row g-3 align-items-start">
-            <div className="col-12 col-lg-8">
-              <div className="card">
-                <div className="card-body p-0">
-                  <div
-                    ref={mapContainerRef}
-                    style={{
-                      width: "100%",
-                      height: "70vh",
-                      minHeight: "420px",
-                      borderRadius: "4px",
-                    }}
-                  />
+          <div className="row g-3 align-items-start" style={mapRowViewportStyle}>
+            {/* Map column */}
+            <div className="col-12 col-lg-8" style={mapCardFillStyle}>
+              <div className="card" style={mapCardFillStyle}>
+                <div className="card-body p-0" style={mapCardFillStyle}>
+                  <div ref={mapContainerRef} style={mapContainerStyle} />
                 </div>
               </div>
             </div>
 
-            <div className="col-12 col-lg-4">
-              <div className="card" aria-label="Results list">
+            {/* Side panel column */}
+            <div className="col-12 col-lg-4" style={mapCardFillStyle}>
+              <div className="card h-100" aria-label="Results list" style={mapCardFillStyle}>
                 <div className="card-body p-0" style={sidePanelBodyStyle}>
                   {selectedResourceId && (
                     <div className="m-b-sm">
