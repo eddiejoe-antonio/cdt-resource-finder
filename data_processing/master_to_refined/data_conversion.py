@@ -23,18 +23,16 @@ NEW: FAST Mapbox Geocoding (unique addresses + cache + concurrency)
   - Threaded requests for speed
   - Uses JSON cache for cheap reruns
 
-Usage:
-  export MAPBOX_TOKEN="pk_..."
-  python data_conversion.py \
-    --master inputs/master_020926.csv \
-    --template inputs/resources.csv \
-    --out outputs/converted.csv \
-    --encoding cp1252 \
-    --errors replace \
-    --mapbox-token "$MAPBOX_TOKEN" \
-    --geocode-cache outputs/geocode_cache_mapbox.json \
-    --geocode-workers 16 \
-    --geocode-country US
+NEW: Google Maps URL column
+  - Adds column: google_maps_url (configurable)
+  - latlong mode: https://www.google.com/maps?q=lat,long (fallback to address search if missing)
+  - address mode: https://www.google.com/maps/search/?api=1&query=<address>
+  - Skips Virtual/blank addresses
+
+NEW: Physical county assignment (point-in-polygon)
+  - Adds column: physical_county (configurable)
+  - Uses counties GeoJSON (default: california_counties.geojson) with county name property NAME
+  - Assigns county for rows with valid lat/long
 """
 
 from __future__ import annotations
@@ -43,6 +41,7 @@ import argparse
 import json
 import re
 import sys
+import warnings
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
@@ -50,6 +49,9 @@ from typing import Dict, List, Tuple, Optional, Any
 import pandas as pd
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import geopandas as gpd
+from shapely.geometry import Point
 
 
 FALSEY = {
@@ -263,6 +265,112 @@ def geocode_address_mapbox(
     return None
 
 
+# ---------------------------
+# Google Maps URL helpers
+# ---------------------------
+
+def _safe_float(s: Any) -> Optional[float]:
+    if s is None:
+        return None
+    try:
+        if pd.isna(s):
+            return None
+    except Exception:
+        pass
+    try:
+        return float(str(s).strip())
+    except Exception:
+        return None
+
+
+def google_maps_url_from_latlon(lat: Any, lon: Any) -> str:
+    lat_f = _safe_float(lat)
+    lon_f = _safe_float(lon)
+    if lat_f is None or lon_f is None:
+        return ""
+    return f"https://www.google.com/maps?q={lat_f},{lon_f}"
+
+
+def google_maps_url_from_address(address: str) -> str:
+    address = (address or "").strip()
+    if not address:
+        return ""
+    q = requests.utils.quote(address, safe="")
+    return f"https://www.google.com/maps/search/?api=1&query={q}"
+
+
+# ---------------------------
+# County assignment helpers (GeoJSON polygon contains)
+# ---------------------------
+
+def assign_county_from_geojson(
+    out_df: pd.DataFrame,
+    *,
+    lat_col: str,
+    lon_col: str,
+    counties_geojson: Path,
+    county_name_prop: str,
+    predicate: str = "within",
+) -> pd.Series:
+    """
+    Assign county name to each row via spatial join between point coords and county polygons.
+
+    predicate:
+      - "within" (default): point strictly inside polygon
+      - "intersects": more forgiving for boundary points
+
+    Returns a Series aligned to out_df.index containing county names or "".
+    """
+    if counties_geojson is None or not counties_geojson.exists():
+        return pd.Series([""] * len(out_df), index=out_df.index)
+
+    lats = pd.to_numeric(out_df[lat_col], errors="coerce")
+    lons = pd.to_numeric(out_df[lon_col], errors="coerce")
+    valid = lats.notna() & lons.notna()
+
+    out = pd.Series([""] * len(out_df), index=out_df.index, dtype="object")
+    if valid.sum() == 0:
+        return out
+
+    pts = gpd.GeoDataFrame(
+        {"__idx": out_df.index[valid]},
+        geometry=[Point(xy) for xy in zip(lons[valid], lats[valid])],
+        crs="EPSG:4326",
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        counties = gpd.read_file(counties_geojson)
+
+    if counties.empty or "geometry" not in counties.columns:
+        return out
+
+    # Ensure CRS is WGS84
+    if counties.crs is None:
+        counties = counties.set_crs("EPSG:4326", allow_override=True)
+    else:
+        counties = counties.to_crs("EPSG:4326")
+
+    if county_name_prop not in counties.columns:
+        raise KeyError(
+            f"County name property '{county_name_prop}' not found in counties GeoJSON columns: {list(counties.columns)}"
+        )
+
+    joined = gpd.sjoin(
+        pts,
+        counties[[county_name_prop, "geometry"]],
+        how="left",
+        predicate=predicate,  # "within" or "intersects"
+    )
+
+    for _, row in joined.iterrows():
+        idx = row["__idx"]
+        val = row.get(county_name_prop)
+        out.at[idx] = "" if val is None else str(val).strip()
+
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--master", required=True, type=Path, help="Path to master_resources.csv")
@@ -281,12 +389,47 @@ def main() -> None:
     ap.add_argument("--geocode-workers", type=int, default=16, help="Thread count for geocoding")
     ap.add_argument("--geocode-country", default="US", help="Country code filter for geocoding (e.g., US)")
 
+    # ✅ Google Maps URL options
+    ap.add_argument("--gmaps-col", default="google_maps_url", help="Output column name for Google Maps link")
+    ap.add_argument(
+        "--gmaps-mode",
+        choices=["latlong", "address"],
+        default="latlong",
+        help="latlong = prefer lat/long; address = always use address search URL",
+    )
+
+    # ✅ County assignment options (defaults match your file + field)
+    ap.add_argument(
+        "--counties-geojson",
+        type=Path,
+        default=Path("data_processing/master_to_refined/inputs/california_counties.geojson"),
+        help="Path to counties GeoJSON (default: california_counties.geojson)",
+    )
+    ap.add_argument(
+        "--county-name-prop",
+        default="NAME",
+        help="County name property in GeoJSON (default: NAME)",
+    )
+    ap.add_argument(
+        "--county-col",
+        default="physical_county",
+        help="Output column name for physical county (default: physical_county)",
+    )
+    ap.add_argument(
+        "--county-predicate",
+        choices=["within", "intersects"],
+        default="within",
+        help="Spatial join predicate (within is strict; intersects includes boundary points).",
+    )
+
     args = ap.parse_args()
 
     if not args.master.exists():
         raise FileNotFoundError(f"Master not found: {args.master}")
     if not args.template.exists():
         raise FileNotFoundError(f"Template not found: {args.template}")
+    if args.counties_geojson and not args.counties_geojson.exists():
+        print(f"[WARN] Counties GeoJSON not found: {args.counties_geojson} (county assignment will be blank)")
 
     master = pd.read_csv(args.master, encoding=args.encoding, encoding_errors=args.errors)
     template = pd.read_csv(args.template, encoding=args.encoding, encoding_errors=args.errors)
@@ -304,8 +447,6 @@ def main() -> None:
         norm_header("Date Submitted"): norm_header("Entry Date"),
         norm_header("Business Phone No"): norm_header("Business Phone No:"),
         norm_header("Phone Number"): norm_header("Phone:"),
-
-        # ✅ Your unmatched ISP question -> map to master 4a (note low–cost en dash in master)
         norm_header("(For ISP only) Do you have a low-cost home internet service offer or subsidy?"):
             norm_header("4a. Do you have a low–cost home internet service offer?"),
     }
@@ -336,7 +477,6 @@ def main() -> None:
     ORG_IN_ZIP   = "Organization Address:: Zip/Postal Code"
 
     phys_cols = [PHYS_ADDR1, PHYS_ADDR2, PHYS_CITY, PHYS_STATE, PHYS_ZIP]
-    org_in_cols = [ORG_IN_ADDR1, ORG_IN_ADDR2, ORG_IN_CITY, ORG_IN_STATE, ORG_IN_ZIP]
 
     # Address targets in output (resources-style)
     ORG_OUT_ADDR1 = "Organization Address: Address Line 1"
@@ -393,44 +533,6 @@ def main() -> None:
             out_df[target_col] = combine_breakout(master, breakout[tnorm], args.join)
             continue
 
-        # ✅ Suffix fallback (handles Phone Number.1..4, etc.)
-        cleaned_target = re.sub(r"\.\.(\d+)$", r".\1", target_col.strip())
-        m = re.match(r"^(.*)\.(\d+)$", cleaned_target)
-        if m:
-            base_col = m.group(1).strip()
-            base_norm = norm_header(base_col)
-
-            # If base has an alias, use it
-            if base_norm in ALIASES:
-                aliased = ALIASES[base_norm]
-                if aliased in master_norm_to_cols:
-                    src = master_norm_to_cols[aliased][0]
-                    out_df[target_col] = master[src]
-                    continue
-
-            # base direct
-            if base_norm in master_norm_to_cols:
-                src = master_norm_to_cols[base_norm][0]
-                out_df[target_col] = master[src]
-                continue
-
-            # base breakout
-            if base_norm in breakout:
-                out_df[target_col] = combine_breakout(master, breakout[base_norm], args.join)
-                continue
-
-            # ✅ extra phone-specific fallback:
-            if base_norm == norm_header("Phone Number"):
-                phone_src = None
-                if norm_header("Phone:") in master_norm_to_cols:
-                    phone_src = master_norm_to_cols[norm_header("Phone:")][0]
-                elif norm_header("Business Phone No:") in master_norm_to_cols:
-                    phone_src = master_norm_to_cols[norm_header("Business Phone No:")][0]
-
-                if phone_src is not None:
-                    out_df[target_col] = master[phone_src]
-                    continue
-
         # Fuzzy match
         best_norm, _ = best_fuzzy_match(tnorm, master_norm_keys, cutoff=args.fuzzy_cutoff)
         if best_norm is not None:
@@ -480,70 +582,21 @@ def main() -> None:
         if ORG_OUT_ZIP in out_df.columns:
             out_df[ORG_OUT_ZIP] = resolved["_zip"]
 
-    # --- Populate "Type of organization" in output from master answers ---
-    type_out_col = find_output_col(
-        out_df,
-        "Type of organization",
-        "Type of Organization",
-        "Type of organisation",
-        "Type of Organisation",
-    )
-
-    SRC_BUSINESS_EMAIL = "Business Email Address:"
-    SRC_CAI = "Community Anchor Institution"
-    SRC_GOV = "Government or Public Organization"
-    SRC_PRIVATE = "Private Sector and Non-Governmental Organizations"
-
-    def nonblank(v) -> bool:
-        if v is None:
-            return False
-        try:
-            if pd.isna(v):
-                return False
-        except Exception:
-            pass
-        return str(v).strip() != ""
-
-    def looks_like_email(v) -> bool:
-        if not nonblank(v):
-            return False
-        s = str(v).strip()
-        return "@" in s and "." in s.split("@")[-1]
-
-    if type_out_col is not None:
-        def build_type(row: pd.Series) -> str:
-            parts: List[str] = []
-
-            if SRC_BUSINESS_EMAIL in row.index and looks_like_email(row[SRC_BUSINESS_EMAIL]):
-                parts.append("Business")
-
-            if SRC_CAI in row.index and nonblank(row[SRC_CAI]):
-                parts.append("Community Anchor Institution")
-
-            if SRC_GOV in row.index and nonblank(row[SRC_GOV]):
-                parts.append("Government or Public Organization")
-
-            if SRC_PRIVATE in row.index and nonblank(row[SRC_PRIVATE]):
-                parts.append("Private Sector and Non-Governmental Organizations")
-
-            return ", ".join(parts)
-
-        out_df[type_out_col] = master.apply(build_type, axis=1)
-
-    # --- FAST Mapbox geocoding (optional) ---
+    # --- Geocode (optional) ---
     out_df["lat"] = ""
     out_df["long"] = ""
 
-    if args.mapbox_token and resolved is not None:
-        cache = _load_json_cache(args.geocode_cache)
-
+    addr_series = pd.Series([""] * len(out_df), index=out_df.index)
+    if resolved is not None:
         addr_series = resolved.apply(
             lambda r: format_address_for_geocode(r["_a1"], r["_a2"], r["_city"], r["_state"], r["_zip"]),
             axis=1,
         ).fillna("")
-
         is_virtual = addr_series.str.strip().str.lower().eq("virtual")
         addr_series = addr_series.where(~is_virtual, "")
+
+    if args.mapbox_token and resolved is not None:
+        cache = _load_json_cache(args.geocode_cache)
 
         unique_addrs = sorted({a.strip() for a in addr_series.tolist() if a and a.strip()})
         to_geocode = [a for a in unique_addrs if a not in cache]
@@ -589,16 +642,50 @@ def main() -> None:
         out_df["lat"] = addr_series.map(lambda a: get_lat(a.strip()) if isinstance(a, str) else "")
         out_df["long"] = addr_series.map(lambda a: get_lon(a.strip()) if isinstance(a, str) else "")
 
+    # --- Google Maps URL column ---
+    out_df[args.gmaps_col] = ""
+    if args.gmaps_mode == "address":
+        out_df[args.gmaps_col] = addr_series.map(
+            lambda a: google_maps_url_from_address(a) if isinstance(a, str) else ""
+        )
+    else:
+        latlon_urls = [
+            google_maps_url_from_latlon(out_df.at[i, "lat"], out_df.at[i, "long"])
+            for i in out_df.index
+        ]
+        addr_urls = addr_series.map(
+            lambda a: google_maps_url_from_address(a) if isinstance(a, str) else ""
+        ).tolist()
+        out_df[args.gmaps_col] = [
+            latlon_urls[i] if latlon_urls[i] else addr_urls[i]
+            for i in range(len(out_df))
+        ]
+
+    # ✅ NEW: Assign physical county from GeoJSON (NAME) using lat/long
+    if args.counties_geojson and args.counties_geojson.exists():
+        out_df[args.county_col] = assign_county_from_geojson(
+            out_df,
+            lat_col="lat",
+            lon_col="long",
+            counties_geojson=args.counties_geojson,
+            county_name_prop=args.county_name_prop,  # NAME
+            predicate=args.county_predicate,         # within (default) or intersects
+        )
+        print(f"[OK] Assigned physical county -> column '{args.county_col}' using {args.counties_geojson}")
+    else:
+        out_df[args.county_col] = ""
+        print("[WARN] Counties GeoJSON missing; physical county column left blank.")
+
     # Write output
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out_df.to_csv(args.out, index=False)
 
     print(f"[OK] Wrote: {args.out}")
     print(f"[INFO] Rows: {len(out_df):,}")
-    print(f"[INFO] Columns (template + lat/long): {out_df.shape[1]:,}")
+    print(f"[INFO] Columns: {out_df.shape[1]:,}")
 
     if unmatched:
-        print(f"[WARN] Unmatched template columns filled as blank ({len(unmatched)}):")
+        print(f"[WARN] Unmatched template columns filled as blank ({len(unmatched)}): {len(unmatched)}")
         for c in unmatched:
             print(f"  - {c}")
 
