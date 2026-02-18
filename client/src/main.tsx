@@ -9,54 +9,112 @@ import "@cagovweb/state-template/dist/js/cagov.core.js";
 
 import App from "./App";
 
-// IMPORTANT: set this to the *exact* WordPress origin embedding the iframe.
-// If you have multiple environments, you can allowlist them (see note below).
-const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
+/**
+ * Types for iframe-resizer's injected API (from iframeResizer.contentWindow)
+ */
+declare global {
+  interface Window {
+    parentIFrame?: {
+      size: (customHeight?: number) => void;
+      scrollTo: (x: number, y: number) => void;
+    };
+  }
+}
 
 /**
- * Report iframe height to WordPress parent.
- * Uses ResizeObserver + window events, and measures more robustly than just documentElement.scrollHeight.
+ * Load iframeResizer.contentWindow script (required inside the iframe/app).
+ * NOTE: The parent (WordPress) must also initialize iframeResizer on the iframe element.
  */
-let reportTimeout: number | undefined;
+function loadIframeResizerContentWindow(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // If already loaded, resolve immediately
+    if (window.parentIFrame) return resolve();
 
-function measureDocHeight(): number {
-  const body = document.body;
-  const html = document.documentElement;
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[data-iframe-resizer="contentWindow"]'
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Failed to load iframe-resizer script")), {
+        once: true,
+      });
+      return;
+    }
 
-  // Robust measurement across browsers/layout modes
-  return Math.max(
-    body?.scrollHeight ?? 0,
-    body?.offsetHeight ?? 0,
-    html?.clientHeight ?? 0,
-    html?.scrollHeight ?? 0,
-    html?.offsetHeight ?? 0
+    const s = document.createElement("script");
+    s.src = "https://resources.technology.ca.gov/calendar/iframeResizer.contentWindow.min.js";
+    s.async = true;
+    s.dataset.iframeResizer = "contentWindow";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load iframe-resizer script"));
+    document.head.appendChild(s);
+  });
+}
+
+/**
+ * Ask iframe-resizer to recalc iframe height.
+ * This is the replacement for your old postMessage height code.
+ */
+let sizeRaf: number | null = null;
+function requestParentResize() {
+  if (!window.parentIFrame?.size) return;
+
+  if (sizeRaf) cancelAnimationFrame(sizeRaf);
+  sizeRaf = requestAnimationFrame(() => {
+    sizeRaf = null;
+    // Let iframe-resizer measure, or pass an explicit height if you prefer.
+    window.parentIFrame?.size();
+  });
+}
+
+/**
+ * Set up observers that trigger resize when your SPA changes height.
+ */
+function installResizeHooks() {
+  // ResizeObserver catches most layout changes
+  const ro = new ResizeObserver(() => requestParentResize());
+  ro.observe(document.documentElement);
+
+  // Also ping on common triggers
+  window.addEventListener("load", requestParentResize);
+  window.addEventListener("resize", requestParentResize);
+
+  // Optional: if your app opens/closes accordions/modals frequently,
+  // you can also ping on route/view changes (you can call requestParentResize() manually from components).
+}
+
+/**
+ * Your "skip header while navigating back and forth" behavior.
+ * Rewritten without jQuery. (jQuery unload can be flaky anyway.)
+ */
+function installUnloadScrollHack() {
+  window.addEventListener("unload", () => {
+    if (window.parentIFrame?.scrollTo) {
+      // This will run as the iframe unloads
+      window.parentIFrame.scrollTo(0, 450);
+    }
+  });
+}
+
+async function bootstrap() {
+  // Render ASAP (don’t block UX); then load iframe-resizer and start resizing.
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
   );
+
+  try {
+    await loadIframeResizerContentWindow();
+    installResizeHooks();
+    installUnloadScrollHack();
+
+    // Initial sizing ping
+    requestParentResize();
+  } catch (e) {
+    // If iframe-resizer fails to load, app still works — it just won't auto-resize.
+    console.warn("[iframe-resizer] contentWindow script failed to load:", e);
+  }
 }
 
-function reportHeight() {
-  if (reportTimeout) window.clearTimeout(reportTimeout);
-
-  reportTimeout = window.setTimeout(() => {
-    const height = measureDocHeight();
-
-    // Security: target the known parent origin
-    window.parent.postMessage({ type: "IFRAME_HEIGHT", height }, PARENT_ORIGIN);
-  }, 100);
-}
-
-// Observe size changes
-const ro = new ResizeObserver(reportHeight);
-ro.observe(document.documentElement);
-
-// Also report on common triggers
-window.addEventListener("load", reportHeight);
-window.addEventListener("resize", reportHeight);
-
-// First ping
-reportHeight();
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+bootstrap();
