@@ -10,7 +10,15 @@
     <!-- ✅ Must exist before googleTranslateElementInit runs -->
     <div id="google_translate_element" style="display:none"></div>
 
-    <div id="root"></div>
+    <div id="root">    <script type="text/javascript" src="https://resources.technology.ca.gov/calendar/iframeResizer.contentWindow.min.js"></script>
+    <script>
+            $(window).unload(function () {
+
+                if ('parentIFrame' in window) {
+                    parentIFrame.scrollTo(0, 450);
+                }
+            });
+    </script></div>
 
     <script type="text/javascript">
       function googleTranslateElementInit() {
@@ -25,15 +33,6 @@
           "google_translate_element"
         );
       }
-    </script>
-    <script type="text/javascript" src="https://resources.technology.ca.gov/calendar/iframeResizer.contentWindow.min.js"></script>
-    <script>
-            $(window).unload(function () {
-
-                if ('parentIFrame' in window) {
-                    parentIFrame.scrollTo(0, 450);
-                }
-            });
     </script>
  
 
