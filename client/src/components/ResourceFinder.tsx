@@ -1,5 +1,5 @@
 // src/components/ResourceFinder.tsx
-import React, {
+import {
   useCallback,
   useDeferredValue,
   useEffect,
@@ -64,15 +64,6 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-function isEmbeddedNow(): boolean {
-  try {
-    return window.self !== window.top;
-  } catch {
-    // If access is blocked, we’re definitely embedded cross-origin
-    return true;
-  }
-}
-
 function getLonLat(r: Resource): { lon: number; lat: number } | null {
   const lat = r.lat;
   const lon = r.long;
@@ -105,9 +96,11 @@ type IndexedResource = Resource & {
   orgServicesLabels: string[];
   hasOrgServices: boolean;
 
+  // derived from Q8 + address
   hasVirtual: boolean;
   hasInPerson: boolean;
 
+  // ✅ NEW: normalized physical county for sorting boosts
   physicalCountyNorm: string; // "" if missing
 };
 
@@ -150,8 +143,6 @@ function applyFeatureStateBatched(
 }
 
 export default function ResourceFinder() {
-  const isEmbedded = isEmbeddedNow();
-
   const [allResources, setAllResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -161,11 +152,14 @@ export default function ResourceFinder() {
   // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // ✅ Single county selection (empty string means none selected)
   const [selectedCounty, setSelectedCounty] = useState<County | "">("");
 
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
+  // Service delivery (Q8)
   const [serviceDeliveryFilter, setServiceDeliveryFilter] =
     useState<ServiceDeliveryFilter>("Either Virtually or In-Person");
 
@@ -187,9 +181,16 @@ export default function ResourceFinder() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
 
+  // Lookup for click->fly
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
+
+  // All ids currently known in the map source
   const allIdsRef = useRef<string[]>([]);
+
+  // Track which ids we previously wanted visible (for fast diff)
   const prevWantedIdsRef = useRef<Set<string>>(new Set());
+
+  // Track a pending sync to avoid stacking work during rapid filter changes
   const pendingSyncRef = useRef<number | null>(null);
 
   // ------------------ map helpers ------------------
@@ -342,12 +343,12 @@ export default function ResourceFinder() {
         .map((n) => orgServiceMap.get(n))
         .filter((v): v is OrgService => Boolean(v));
 
-      // pass Address Line 1 ("Virtual") into flags normalization
+      // ✅ FIX: pass Address Line 1 ("Virtual") into flags normalization
       const flags = normalizeServiceDeliveryFlags(r.serviceDelivery, r.addressLine1);
 
-      const physicalCountyNorm = normalizeCountyMaybe(
-        (r as Resource & { physicalCounty?: string }).physicalCounty
-      );
+      // ✅ NEW: normalize physical county for sorting.
+      // Expect r.physicalCounty to be like "Alameda" (from geojson NAME)
+      const physicalCountyNorm = normalizeCountyMaybe((r as Resource & { physicalCounty?: string }).physicalCounty);
 
       return {
         ...r,
@@ -446,6 +447,8 @@ export default function ResourceFinder() {
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
     return searched.filter((r) => {
+      // ✅ keep your existing meaning of the county filter:
+      // it filters to providers that SAY they serve the selected county.
       if (selectedCounty) {
         if (!r.countiesSet.has(selectedCounty)) return false;
       }
@@ -488,7 +491,10 @@ export default function ResourceFinder() {
     serviceDeliveryFilter,
   ]);
 
+  // Debounce what the map sees (avoid thrashing feature-state)
   const debouncedFilteredForMap = useDebouncedValue(filtered, 120);
+
+  // Keep latest filter result in a ref so map init doesn’t depend on filter state
   const debouncedFilteredForMapRef = useRef(debouncedFilteredForMap);
   useEffect(() => {
     debouncedFilteredForMapRef.current = debouncedFilteredForMap;
@@ -506,8 +512,12 @@ export default function ResourceFinder() {
     const toHide: string[] = [];
     const toShow: string[] = [];
 
-    for (const id of prevWanted) if (!nextWanted.has(id)) toHide.push(id);
-    for (const id of nextWanted) if (!prevWanted.has(id)) toShow.push(id);
+    for (const id of prevWanted) {
+      if (!nextWanted.has(id)) toHide.push(id);
+    }
+    for (const id of nextWanted) {
+      if (!prevWanted.has(id)) toShow.push(id);
+    }
 
     if (toHide.length) applyFeatureStateBatched(map, toHide, true);
     if (toShow.length) applyFeatureStateBatched(map, toShow, false);
@@ -518,8 +528,13 @@ export default function ResourceFinder() {
   // ------------------ sorting + pagination ------------------
   const sortedFiltered = useMemo(() => {
     const sorted = [...filtered];
+
+    // ✅ NEW LOGIC:
+    // If a county is selected, boost resources whose *physical location* is in that county
+    // (based on your new field `physicalCounty`).
     const selectedCountyNorm = selectedCounty ? normalizeValue(selectedCounty) : "";
 
+    // If using "proximity", compute distances once; otherwise Infinity.
     const dist = (r: Resource) => {
       if (sortMode !== "proximity" || !userLocation) return Infinity;
       const ll = getLonLat(r);
@@ -527,19 +542,24 @@ export default function ResourceFinder() {
     };
 
     sorted.sort((a, b) => {
+      // 1) Physical-county boost when county is selected
       if (selectedCountyNorm) {
         const aMatch = a.physicalCountyNorm && a.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
         const bMatch = b.physicalCountyNorm && b.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
-        if (aMatch !== bMatch) return bMatch - aMatch;
+        if (aMatch !== bMatch) return bMatch - aMatch; // match first
       }
 
+      // 2) Then apply your existing sort mode within each group
       if (sortMode === "proximity" && userLocation) {
         const da = dist(a);
         const db = dist(b);
         if (da !== db) return da - db;
+
+        // tie-breaker
         return (a.name ?? "").localeCompare(b.name ?? "");
       }
 
+      // alphabetical default
       return (a.name ?? "").localeCompare(b.name ?? "");
     });
 
@@ -891,6 +911,7 @@ export default function ResourceFinder() {
     );
   };
 
+  // side pane resources
   const sidePanelResources = useMemo(() => {
     if (!selectedResourceId) return sortedFiltered;
     const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
@@ -900,56 +921,8 @@ export default function ResourceFinder() {
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
-  /**
-   * ✅ The core fix:
-   * - In embedded mode, DO NOT allow the app to scroll.
-   * - The map + side panel sit inside a fixed-height row.
-   * - ONLY the side panel body is scrollable.
-   */
-  const appRootStyle: React.CSSProperties | undefined = isEmbedded
-    ? { height: "100vh", overflow: "hidden" }
-    : undefined;
-
-  // Only needed so the map row can fill the remaining space cleanly.
-  const mapRowViewportStyle: React.CSSProperties | undefined = isEmbedded
-    ? {
-        height: "70vh", // pick your desired “main content” height inside the iframe
-        minHeight: 520,
-      }
-    : undefined;
-
-  const mapCardFillStyle: React.CSSProperties | undefined = isEmbedded
-    ? { height: "100%" }
-    : undefined;
-
-  const mapContainerStyle: React.CSSProperties = isEmbedded
-    ? {
-        width: "100%",
-        height: "100%",
-        minHeight: "100%",
-        borderRadius: "4px",
-      }
-    : {
-        width: "100%",
-        height: "70vh",
-        minHeight: "420px",
-        borderRadius: "4px",
-      };
-
-  // ✅ This is the ONLY scrollbar in embed mode.
-  const sidePanelBodyStyle: React.CSSProperties = isEmbedded
-    ? {
-        height: "100%",
-        overflowY: "auto",
-        overflowX: "hidden",
-      }
-    : {
-        maxHeight: "70vh",
-        overflow: "auto",
-      };
-
   return (
-    <div className="container-fluid" style={appRootStyle}>
+    <div className="container-fluid">
       {/* Header */}
       <header className="m-y-lg md:mx-32 lg:mx-64">
         <h2 className="h2 bg-[#1f2576] text-white py-8 px-4">
@@ -967,13 +940,11 @@ export default function ResourceFinder() {
           </span>{" "}
           Resource Finder
         </h2>
-
         <p className="m-t-md px-4">
           Welcome to the California Digital Equity Resource Finder – a tool designed to assist
           residents and organizations to find digital inclusion programs and services in their
           communities. The Resource Finder was updated in January 2026.
         </p>
-
         <p className="m-t-md px-4">
           Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
           training.
@@ -1192,10 +1163,7 @@ export default function ResourceFinder() {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label
-                      className="form-label d-inline-flex align-items-center"
-                      htmlFor="view-toggle"
-                    >
+                    <label className="form-label d-inline-flex align-items-center" htmlFor="view-toggle">
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>
@@ -1254,20 +1222,26 @@ export default function ResourceFinder() {
         </div>
 
         {viewMode === "map" ? (
-          <div className="row g-3 align-items-start" style={mapRowViewportStyle}>
-            {/* Map column */}
-            <div className="col-12 col-lg-8" style={mapCardFillStyle}>
-              <div className="card" style={mapCardFillStyle}>
-                <div className="card-body p-0" style={mapCardFillStyle}>
-                  <div ref={mapContainerRef} style={mapContainerStyle} />
+          <div className="row g-3 align-items-start">
+            <div className="col-12 col-lg-8">
+              <div className="card">
+                <div className="card-body p-0">
+                  <div
+                    ref={mapContainerRef}
+                    style={{
+                      width: "100%",
+                      height: "70vh",
+                      minHeight: "420px",
+                      borderRadius: "4px",
+                    }}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Side panel column */}
-            <div className="col-12 col-lg-4" style={mapCardFillStyle}>
-              <div className="card h-100" aria-label="Results list" style={mapCardFillStyle}>
-                <div className="card-body p-0" style={sidePanelBodyStyle}>
+            <div className="col-12 col-lg-4">
+              <div className="card" aria-label="Results list">
+                <div className="card-body p-0" style={{ maxHeight: "70vh", overflow: "auto" }}>
                   {selectedResourceId && (
                     <div className="m-b-sm">
                       <button
