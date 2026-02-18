@@ -1,5 +1,5 @@
 // src/components/ResourceFinder.tsx
-import React, {
+import {
   useCallback,
   useDeferredValue,
   useEffect,
@@ -68,9 +68,11 @@ function isEmbeddedNow(): boolean {
   try {
     return window.self !== window.top;
   } catch {
+    // If access is blocked, we’re definitely embedded cross-origin
     return true;
   }
 }
+
 
 function getLonLat(r: Resource): { lon: number; lat: number } | null {
   const lat = r.lat;
@@ -84,6 +86,12 @@ function getLonLat(r: Resource): { lon: number; lat: number } | null {
   return { lat, lon };
 }
 
+/**
+ * Your CSV now includes `physical_county` (NAME from the CA counties geojson).
+ * Make sure `Resource` includes:
+ *   physicalCounty?: string;
+ * (and that fetchResources maps physical_county -> physicalCounty)
+ */
 function normalizeCountyMaybe(v: unknown): string {
   return normalizeValue(String(v ?? ""));
 }
@@ -98,7 +106,6 @@ type IndexedResource = Resource & {
   orgServicesLabels: string[];
   hasOrgServices: boolean;
 
-  // derived from Q8 + address
   hasVirtual: boolean;
   hasInPerson: boolean;
 
@@ -145,7 +152,6 @@ function applyFeatureStateBatched(
 
 export default function ResourceFinder() {
   const isEmbedded = isEmbeddedNow();
-
   const [allResources, setAllResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -160,7 +166,6 @@ export default function ResourceFinder() {
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
 
-  // Service delivery (Q8)
   const [serviceDeliveryFilter, setServiceDeliveryFilter] =
     useState<ServiceDeliveryFilter>("Either Virtually or In-Person");
 
@@ -182,16 +187,9 @@ export default function ResourceFinder() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
 
-  // Lookup for click->fly
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
-
-  // All ids currently known in the map source
   const allIdsRef = useRef<string[]>([]);
-
-  // Track which ids we previously wanted visible (for fast diff)
   const prevWantedIdsRef = useRef<Set<string>>(new Set());
-
-  // Track a pending sync to avoid stacking work during rapid filter changes
   const pendingSyncRef = useRef<number | null>(null);
 
   // ------------------ map helpers ------------------
@@ -344,10 +342,9 @@ export default function ResourceFinder() {
         .map((n) => orgServiceMap.get(n))
         .filter((v): v is OrgService => Boolean(v));
 
-      // ✅ pass Address Line 1 ("Virtual") into flags normalization
+      // pass Address Line 1 ("Virtual") into flags normalization
       const flags = normalizeServiceDeliveryFlags(r.serviceDelivery, r.addressLine1);
 
-      // ✅ physical county normalization for sorting boosts
       const physicalCountyNorm = normalizeCountyMaybe(
         (r as Resource & { physicalCounty?: string }).physicalCounty
       );
@@ -449,7 +446,6 @@ export default function ResourceFinder() {
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
     return searched.filter((r) => {
-      // County filter: providers that SAY they serve the selected county.
       if (selectedCounty) {
         if (!r.countiesSet.has(selectedCounty)) return false;
       }
@@ -492,7 +488,6 @@ export default function ResourceFinder() {
     serviceDeliveryFilter,
   ]);
 
-  // Debounce what the map sees (avoid thrashing feature-state)
   const debouncedFilteredForMap = useDebouncedValue(filtered, 120);
   const debouncedFilteredForMapRef = useRef(debouncedFilteredForMap);
   useEffect(() => {
@@ -511,12 +506,8 @@ export default function ResourceFinder() {
     const toHide: string[] = [];
     const toShow: string[] = [];
 
-    for (const id of prevWanted) {
-      if (!nextWanted.has(id)) toHide.push(id);
-    }
-    for (const id of nextWanted) {
-      if (!prevWanted.has(id)) toShow.push(id);
-    }
+    for (const id of prevWanted) if (!nextWanted.has(id)) toHide.push(id);
+    for (const id of nextWanted) if (!prevWanted.has(id)) toShow.push(id);
 
     if (toHide.length) applyFeatureStateBatched(map, toHide, true);
     if (toShow.length) applyFeatureStateBatched(map, toShow, false);
@@ -527,7 +518,6 @@ export default function ResourceFinder() {
   // ------------------ sorting + pagination ------------------
   const sortedFiltered = useMemo(() => {
     const sorted = [...filtered];
-
     const selectedCountyNorm = selectedCounty ? normalizeValue(selectedCounty) : "";
 
     const dist = (r: Resource) => {
@@ -537,7 +527,6 @@ export default function ResourceFinder() {
     };
 
     sorted.sort((a, b) => {
-      // Physical-county boost when county is selected
       if (selectedCountyNorm) {
         const aMatch = a.physicalCountyNorm && a.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
         const bMatch = b.physicalCountyNorm && b.physicalCountyNorm === selectedCountyNorm ? 1 : 0;
@@ -722,14 +711,7 @@ export default function ResourceFinder() {
       map.remove();
       mapRef.current = null;
     };
-  }, [
-    viewMode,
-    allMapGeoJson,
-    flyToCalifornia,
-    flyToCounty,
-    flyToResourceId,
-    syncMapVisibilityDelta,
-  ]);
+  }, [viewMode, allMapGeoJson, flyToCalifornia, flyToCounty, flyToResourceId, syncMapVisibilityDelta]);
 
   // Keep map source updated when data changes
   useEffect(() => {
@@ -867,17 +849,15 @@ export default function ResourceFinder() {
   const residentOptions = SERVICES.map((s) => ({ value: s, label: labelForService(s) }));
   const orgOptions = ORG_SERVICES.map((s) => ({ value: s, label: labelForOrgService(s) }));
 
-  const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map(
-    (v) => ({
-      value: v,
-      label:
-        v === "Virtually"
-          ? "Virtual"
-          : v === "Either Virtually or In-Person"
-          ? "Either Virtual or In-Person"
-          : v,
-    })
-  );
+  const deliveryOptions: SelectOption<ServiceDeliveryFilter>[] = SERVICE_DELIVERY_OPTIONS.map((v) => ({
+    value: v,
+    label:
+      v === "Virtually"
+        ? "Virtual"
+        : v === "Either Virtually or In-Person"
+        ? "Either Virtual or In-Person"
+        : v,
+  }));
 
   const sortOptions: SelectOption<SortMode>[] = [
     { value: "alphabetical", label: "A-Z" },
@@ -911,39 +891,14 @@ export default function ResourceFinder() {
   if (loading) return <div className="p-4">Loading…</div>;
   if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
 
-  // ------------------ EMBED MODE LAYOUT ------------------
-  // In embedded mode we make the whole app fill 100vh and create ONE scroll surface
-  // inside the app (the Results section). This avoids "WP scrollbar + iframe scrollbar"
-  // feeling and prevents mismatched column heights.
-  const rootStyle: React.CSSProperties | undefined = isEmbedded
-    ? {
-        height: "100vh",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-      }
-    : undefined;
-
-  const resultsSectionStyle: React.CSSProperties | undefined = isEmbedded
-    ? {
-        flex: "1 1 auto",
-        minHeight: 0,
-        overflow: "auto",
-      }
-    : undefined;
-
-  // In embedded mode, avoid side-panel nested scrolling; we stack map+results vertically.
-  // In non-embedded mode, keep your original two-column layout and side-panel scroll.
+  // EMBED MODE CHANGES:
+  // - Remove the side panel internal scrollbar when embedded (prevents 2nd scrollbar)
   const sidePanelBodyStyle: React.CSSProperties | undefined = isEmbedded
     ? undefined
     : { maxHeight: "70vh", overflow: "auto" };
 
-  const mapHeightStyle: React.CSSProperties = isEmbedded
-    ? { width: "100%", height: "360px", minHeight: "360px", borderRadius: "4px" }
-    : { width: "100%", height: "70vh", minHeight: "420px", borderRadius: "4px" };
-
   return (
-    <div className="container-fluid" style={rootStyle}>
+    <div className="container-fluid">
       {/* Header */}
       <header className="m-y-lg md:mx-32 lg:mx-64">
         <h2 className="h2 bg-[#1f2576] text-white py-8 px-4">
@@ -1113,11 +1068,7 @@ export default function ResourceFinder() {
                         justifyContent: "center",
                       }}
                     >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
-                      />
+                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -1186,10 +1137,7 @@ export default function ResourceFinder() {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label
-                      className="form-label d-inline-flex align-items-center"
-                      htmlFor="view-toggle"
-                    >
+                    <label className="form-label d-inline-flex align-items-center" htmlFor="view-toggle">
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>
@@ -1200,10 +1148,7 @@ export default function ResourceFinder() {
                         handleNavigate={(view) => {
                           setViewMode(view);
                           if (view === "map") {
-                            resultsTopRef.current?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            });
+                            resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                           }
                         }}
                       />
@@ -1212,12 +1157,13 @@ export default function ResourceFinder() {
                 </div>
               </div>
             </div>
+
           </div>
         </div>
       </section>
 
       {/* Results */}
-      <section className="md:mx-36" aria-label="Results" style={resultsSectionStyle}>
+      <section className="md:mx-36" aria-label="Results">
         <div ref={resultsTopRef} />
 
         <div className="row g-3 align-items-start align-items-md-end m-b-md">
@@ -1248,17 +1194,24 @@ export default function ResourceFinder() {
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
-            {/* Map (stack full-width in embedded mode) */}
-            <div className={isEmbedded ? "col-12" : "col-12 col-lg-8"}>
+            <div className="col-12 col-lg-8">
               <div className="card">
                 <div className="card-body p-0">
-                  <div ref={mapContainerRef} style={mapHeightStyle} />
+                    <div
+                      ref={mapContainerRef}
+                      style={{
+                        width: "100%",
+                        height: isEmbedded ? "55vh" : "70vh",
+                        minHeight: isEmbedded ? "320px" : "420px",
+                        borderRadius: "4px",
+                      }}
+                    />
+
                 </div>
               </div>
             </div>
 
-            {/* Results list (stack full-width in embedded mode) */}
-            <div className={isEmbedded ? "col-12" : "col-12 col-lg-4"}>
+            <div className="col-12 col-lg-4">
               <div className="card" aria-label="Results list">
                 <div className="card-body p-0" style={sidePanelBodyStyle}>
                   {selectedResourceId && (
@@ -1279,10 +1232,14 @@ export default function ResourceFinder() {
                         audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
 
                       const servicesLabel =
-                        audience === "Resident" ? "Services" : "Supports / services for organizations";
+                        audience === "Resident"
+                          ? "Services"
+                          : "Supports / services for organizations";
 
                       const freeLowCostToShow =
-                        audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
+                        audience === "Resident"
+                          ? r.freeLowCostResidents
+                          : r.freeLowCostOrganizations;
 
                       return (
                         <div key={r.id}>
