@@ -12,6 +12,15 @@ function formatWebsite(url?: string) {
   return trimmed;
 }
 
+function formatTelHref(phone?: string) {
+  const raw = (phone ?? "").trim();
+  if (!raw) return "";
+  // Keep leading +, digits only
+  const cleaned = raw.replace(/[^\d+]/g, "");
+  if (!cleaned) return "";
+  return `tel:${cleaned}`;
+}
+
 type Props = {
   resource: Resource;
   servicesToShow?: string[];
@@ -57,7 +66,6 @@ export const ResourceCard: React.FC<Props> = ({
   }, [servicesToShow, fallbackServicesText]);
 
   const iconStyle: React.CSSProperties = { fontSize: "1.5rem", lineHeight: 1 };
-// src/components/ResourceCard.tsx
 
   const addressLink = useMemo(() => {
     // only link if we actually have a URL and an address
@@ -65,6 +73,12 @@ export const ResourceCard: React.FC<Props> = ({
     return resource.googleMapsUrl?.trim() || "";
   }, [address, resource.googleMapsUrl]);
 
+  const emailHref = useMemo(() => {
+    const e = (resource.contactEmail ?? "").trim();
+    return e ? `mailto:${e}` : "";
+  }, [resource.contactEmail]);
+
+  const telHref = useMemo(() => formatTelHref(resource.phone), [resource.phone]);
 
   return (
     <article className="card h-100">
@@ -88,7 +102,9 @@ export const ResourceCard: React.FC<Props> = ({
                     rel="noopener noreferrer"
                     className="text-normal min-w-0"
                     style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    aria-label={`Open ${resource.name || "this location"} in Google Maps (opens in a new tab)`}
+                    aria-label={`Open ${
+                      resource.name || "this location"
+                    } in Google Maps (opens in a new tab)`}
                   >
                     {address}
                   </a>
@@ -97,6 +113,7 @@ export const ResourceCard: React.FC<Props> = ({
                 )}
               </li>
             )}
+
             {servicesText && (
               <li className="d-flex align-items-start m-b-sm">
                 <span
@@ -113,7 +130,7 @@ export const ResourceCard: React.FC<Props> = ({
             {websiteHref && (
               <li className="d-flex align-items-start">
                 <span
-                  className="ca-gov-icon-globe m-r-sm flex-shrink-0"
+                  className="ca-gov-icon-external-link m-r-sm flex-shrink-0"
                   aria-hidden="true"
                   style={iconStyle}
                 />
@@ -135,39 +152,74 @@ export const ResourceCard: React.FC<Props> = ({
 
           {showMore && (
             <div id={detailsId} className="m-t-md">
-              {resource.serviceDelivery && (
-                <p className="m-b-sm">
-                  <span className="fw-bold">In-person/virtual:</span>{" "}
-                  {resource.serviceDelivery}
-                </p>
-              )}
-
+              <hr></hr>
               {resource.languages && (
-                <p className="m-b-sm">
-                  <span className="fw-bold">Language:</span> {resource.languages}
+              <p className="m-b-sm d-flex align-items-start">
+                  <span
+                    className="ca-gov-icon-globe m-r-sm flex-shrink-0"
+                    aria-hidden="true"
+                    style={{ ...iconStyle, marginTop: 2 }}
+                  />
+                  <span>
+                  {resource.languages}
+                  </span>
                 </p>
               )}
 
               {freeLowCostToShow && (
-                <p className="m-b-sm">
-                  <span className="fw-bold">Free/Low Cost:</span>{" "}
+              <p className="m-b-sm d-flex align-items-start">
+                  <span
+                    className="ca-gov-icon-currency m-r-sm flex-shrink-0"
+                    aria-hidden="true"
+                    style={{ ...iconStyle, marginTop: 2 }}
+                  />
+                  <span>
                   {freeLowCostToShow}
+                  </span>
                 </p>
               )}
 
               {resource.contactEmail && (
-                <p className="m-b-sm">
-                  <span className="fw-bold">Email:</span>{" "}
-                  <a href={`mailto:${resource.contactEmail}`}>
-                    {resource.contactEmail}
-                  </a>
+                <p className="m-b-sm d-flex align-items-start">
+                  <span
+                    className="ca-gov-icon-email m-r-sm flex-shrink-0"
+                    aria-hidden="true"
+                    style={{ ...iconStyle, marginTop: 2 }}
+                  />
+                  <span className="min-w-0">
+                    <a
+                      href={emailHref}
+                      className="min-w-0"
+                      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                      aria-label={`Email ${resource.name || "this organization"}`}
+                    >
+                      {resource.contactEmail}
+                    </a>
+                  </span>
                 </p>
               )}
 
               {resource.phone && (
-                <p className="m-b-sm">
-                  <span className="fw-bold">Phone number:</span>{" "}
-                  <a href={`tel:${resource.phone}`}>{resource.phone}</a>
+                <p className="m-b-sm d-flex align-items-start">
+                  <span
+                    className="ca-gov-icon-phone m-r-sm flex-shrink-0"
+                    aria-hidden="true"
+                    style={{ ...iconStyle, marginTop: 2 }}
+                  />
+                  <span className="min-w-0">
+                    {telHref ? (
+                      <a
+                        href={telHref}
+                        aria-label={`Call ${resource.name || "this organization"} at ${
+                          resource.phone
+                        }`}
+                      >
+                        {resource.phone}
+                      </a>
+                    ) : (
+                      <span>{resource.phone}</span>
+                    )}
+                  </span>
                 </p>
               )}
             </div>

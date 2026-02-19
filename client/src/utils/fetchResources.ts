@@ -46,16 +46,16 @@ function findKeyStartingWith(row: Row, prefix: string): string | null {
  * - starts with "No"  => DOES NOT charge => Free/Low Cost = "Yes"
  * - starts with "Yes" => charges         => Free/Low Cost = "No"
  */
-function normalizeFreeLowCostFromCharge(v: unknown): "Yes" | "No" | "" {
+function normalizeFreeLowCostFromCharge(v: unknown): "Services offered free of charge" | "Services offered for a fee" | "" {
   const txt = s(v).toLowerCase();
   if (!txt) return "";
 
-  if (/^\s*no\b/.test(txt)) return "Yes";
-  if (/^\s*yes\b/.test(txt)) return "No";
+  if (/^\s*no\b/.test(txt)) return "Services offered free of charge";
+  if (/^\s*yes\b/.test(txt)) return "Services offered for a fee";
 
   // fallback heuristics
-  if (txt.includes("free of cost") || txt.includes("free")) return "Yes";
-  if (txt.includes("charge") || txt.includes("fee") || txt.includes("$")) return "No";
+  if (txt.includes("free of cost") || txt.includes("free")) return "Services offered free of charge";
+  if (txt.includes("charge") || txt.includes("fee") || txt.includes("$")) return "Services offered for a fee";
 
   return "";
 }
@@ -92,7 +92,7 @@ const COL = {
 
   // NOTE: NBSP at end in some exports
   languages:
-    "11. What language(s) does your entity/organization provide its services in? Please select all that apply.\u00A0",
+    "languages",
 
   // Audience-specific "charge?" questions
   chargeResidents: "9. Does your entity/organization charge for its services?",

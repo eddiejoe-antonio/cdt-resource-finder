@@ -33,6 +33,10 @@ NEW: Physical county assignment (point-in-polygon)
   - Adds column: physical_county (configurable)
   - Uses counties GeoJSON (default: california_counties.geojson) with county name property NAME
   - Assigns county for rows with valid lat/long
+
+FIXED: Webpage rule logic + normalization
+  - Uses resolved Organization Address to decide which input URL field to use
+  - Rule 2 no longer blanks out (chosen starts as pd.NA, and masks are applied correctly)
 """
 
 from __future__ import annotations
@@ -45,6 +49,7 @@ import warnings
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
+from urllib.parse import urlparse
 
 import pandas as pd
 import requests
@@ -185,6 +190,85 @@ def find_output_col(out_df: pd.DataFrame, *candidates: str) -> Optional[str]:
 
 
 # ---------------------------
+# Web URL normalization helpers
+# ---------------------------
+
+_TRAILING_PUNCT = ".,;:!?)\"'”’]}>"
+_LEADING_PUNCT = "\"'“‘([{<"
+
+def _first_urlish_token(s: str) -> str:
+    if not s:
+        return ""
+    s = s.strip()
+    s = re.sub(r"[\r\n]+", " ", s)
+
+    parts = re.split(r"[,\s]+", s)
+    for p in parts:
+        p = p.strip(_LEADING_PUNCT).strip(_TRAILING_PUNCT)
+        if not p:
+            continue
+        if p.lower().startswith("mailto:") or "@" in p:
+            continue
+        if "." in p:
+            return p
+    return ""
+
+
+def normalize_webpage_value(v: Any) -> str:
+    """
+    Output a "bare URL" for app use:
+      - no scheme
+      - no leading www.
+      - keep domain + path + query
+    """
+    if is_blank(v):
+        return ""
+
+    token = _first_urlish_token(str(v))
+    if not token:
+        return ""
+
+    parse_target = token
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", parse_target):
+        parse_target = "https://" + parse_target
+
+    try:
+        parsed = urlparse(parse_target)
+    except Exception:
+        return ""
+
+    netloc = (parsed.netloc or "").strip()
+    path = (parsed.path or "")
+    query = (parsed.query or "")
+
+    if not netloc and parsed.path and "." in parsed.path.split("/")[0]:
+        first, *rest = parsed.path.split("/", 1)
+        netloc = first
+        path = "/" + rest[0] if rest else ""
+
+    if not netloc:
+        return ""
+
+    host = netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+
+    path = path.rstrip(_TRAILING_PUNCT)
+    query = query.rstrip(_TRAILING_PUNCT)
+
+    out = host
+    if path:
+        out += path
+    if query:
+        out += "?" + query
+
+    out = out.strip().strip(_LEADING_PUNCT).strip(_TRAILING_PUNCT)
+    if "@" in out:
+        return ""
+    return out
+
+
+# ---------------------------
 # FAST Mapbox geocoding helpers
 # ---------------------------
 
@@ -232,10 +316,6 @@ def geocode_address_mapbox(
     country: str = "US",
     timeout: int = 20,
 ) -> Optional[Tuple[float, float]]:
-    """
-    Returns (lat, lon) or None.
-    Mapbox returns center: [lon, lat]
-    """
     address = address.strip()
     if not address:
         return None
@@ -312,15 +392,6 @@ def assign_county_from_geojson(
     county_name_prop: str,
     predicate: str = "within",
 ) -> pd.Series:
-    """
-    Assign county name to each row via spatial join between point coords and county polygons.
-
-    predicate:
-      - "within" (default): point strictly inside polygon
-      - "intersects": more forgiving for boundary points
-
-    Returns a Series aligned to out_df.index containing county names or "".
-    """
     if counties_geojson is None or not counties_geojson.exists():
         return pd.Series([""] * len(out_df), index=out_df.index)
 
@@ -345,7 +416,6 @@ def assign_county_from_geojson(
     if counties.empty or "geometry" not in counties.columns:
         return out
 
-    # Ensure CRS is WGS84
     if counties.crs is None:
         counties = counties.set_crs("EPSG:4326", allow_override=True)
     else:
@@ -360,7 +430,7 @@ def assign_county_from_geojson(
         pts,
         counties[[county_name_prop, "geometry"]],
         how="left",
-        predicate=predicate,  # "within" or "intersects"
+        predicate=predicate,
     )
 
     for _, row in joined.iterrows():
@@ -379,17 +449,14 @@ def main() -> None:
     ap.add_argument("--join", default=", ", help="Join string for multi-select options")
     ap.add_argument("--fuzzy-cutoff", type=float, default=0.80, help="Fuzzy match cutoff for direct columns")
 
-    # ✅ Fix A: encoding safety
     ap.add_argument("--encoding", default="utf-8", help="Input encoding (utf-8, cp1252, latin1, etc.)")
     ap.add_argument("--errors", default="strict", help="Encoding errors: strict|replace|ignore")
 
-    # ✅ Mapbox geocoding options (optional)
     ap.add_argument("--mapbox-token", default="", help="Mapbox token (if set, adds lat/long)")
     ap.add_argument("--geocode-cache", type=Path, default=None, help="JSON cache for geocoding results")
     ap.add_argument("--geocode-workers", type=int, default=16, help="Thread count for geocoding")
     ap.add_argument("--geocode-country", default="US", help="Country code filter for geocoding (e.g., US)")
 
-    # ✅ Google Maps URL options
     ap.add_argument("--gmaps-col", default="google_maps_url", help="Output column name for Google Maps link")
     ap.add_argument(
         "--gmaps-mode",
@@ -398,23 +465,14 @@ def main() -> None:
         help="latlong = prefer lat/long; address = always use address search URL",
     )
 
-    # ✅ County assignment options (defaults match your file + field)
     ap.add_argument(
         "--counties-geojson",
         type=Path,
         default=Path("data_processing/master_to_refined/inputs/california_counties.geojson"),
         help="Path to counties GeoJSON (default: california_counties.geojson)",
     )
-    ap.add_argument(
-        "--county-name-prop",
-        default="NAME",
-        help="County name property in GeoJSON (default: NAME)",
-    )
-    ap.add_argument(
-        "--county-col",
-        default="physical_county",
-        help="Output column name for physical county (default: physical_county)",
-    )
+    ap.add_argument("--county-name-prop", default="NAME", help="County name property in GeoJSON (default: NAME)")
+    ap.add_argument("--county-col", default="physical_county", help="Output column name for physical county")
     ap.add_argument(
         "--county-predicate",
         choices=["within", "intersects"],
@@ -434,7 +492,6 @@ def main() -> None:
     master = pd.read_csv(args.master, encoding=args.encoding, encoding_errors=args.errors)
     template = pd.read_csv(args.template, encoding=args.encoding, encoding_errors=args.errors)
 
-    # Lookups for direct matches
     master_norm_to_cols: Dict[str, List[str]] = {}
     for c in master.columns:
         master_norm_to_cols.setdefault(norm_header(c), []).append(c)
@@ -442,7 +499,6 @@ def main() -> None:
 
     breakout = build_breakout_map(list(master.columns))
 
-    # Aliases for common wording/punctuation differences
     ALIASES = {
         norm_header("Date Submitted"): norm_header("Entry Date"),
         norm_header("Business Phone No"): norm_header("Business Phone No:"),
@@ -451,7 +507,6 @@ def main() -> None:
             norm_header("4a. Do you have a low–cost home internet service offer?"),
     }
 
-    # ✅ Special Q10 mapping (template output col)
     RES_Q10 = "10. To which of the following are your service available?"
     MASTER_Q10_YESNO = "10. Does your entity/organization serve individuals at or below 150% of the Federal Poverty Level?"
     MASTER_Q10A_BASE = "10a. If yes, does your entity/organization serve any additional populations? Please select all that apply."
@@ -460,10 +515,8 @@ def main() -> None:
     master_q10_yesno_norm = norm_header(MASTER_Q10_YESNO)
     master_q10a_norm = norm_header(MASTER_Q10A_BASE)
 
-    # Q8 Virtually trigger
     VIRTUAL_COL = "8. How does your entity/organization provide its services? Select all that apply.: Virtually"
 
-    # Address sources in master
     PHYS_ADDR1 = "What is the physical location address where your entity/organization provides in-person services?: Address Line 1"
     PHYS_ADDR2 = "What is the physical location address where your entity/organization provides in-person services?: Address Line 2"
     PHYS_CITY  = "What is the physical location address where your entity/organization provides in-person services?: City"
@@ -478,21 +531,70 @@ def main() -> None:
 
     phys_cols = [PHYS_ADDR1, PHYS_ADDR2, PHYS_CITY, PHYS_STATE, PHYS_ZIP]
 
-    # Address targets in output (resources-style)
     ORG_OUT_ADDR1 = "Organization Address: Address Line 1"
     ORG_OUT_ADDR2 = "Organization Address: Address Line 2"
     ORG_OUT_CITY  = "Organization Address: City"
     ORG_OUT_STATE = "Organization Address: State"
     ORG_OUT_ZIP   = "Organization Address: Zip/Postal Code"
 
-    # --- Main mapping: build all output columns from template ---
     out_df = pd.DataFrame(index=master.index)
     unmatched: List[str] = []
+    # --- Languages combined column (Q11 breakout -> languages w/ Other override) ---
+
+    LANG_Q11_BASE = "11. What language(s) does your entity/organization provide its services in? Please select all that apply."
+    LANG_OTHER_COL = "11. What language(s) does your entity/organization provide its services in? Please select all that apply.: Other"
+    LANG_OTHER_TEXT = "If Selected Other, please share more details below..1"
+
+    lang_key = norm_header(LANG_Q11_BASE)
+
+    def build_languages_series():
+        # find breakout key
+        key = None
+        if lang_key in breakout:
+            key = lang_key
+        else:
+            best, score = best_fuzzy_match(lang_key, list(breakout.keys()), cutoff=0.75)
+            if best:
+                key = best
+
+        if not key:
+            print("[WARN] No language breakout columns found for Q11.")
+            return pd.Series([""] * len(master), index=master.index)
+
+        # normal breakout combine
+        base = combine_breakout(master, breakout[key], args.join)
+
+        # handle Other replacement
+        if LANG_OTHER_COL in master.columns and LANG_OTHER_TEXT in master.columns:
+
+            def replace_other(i, val):
+                if not isinstance(val, str) or "Other" not in val:
+                    return val or ""
+
+                detail = master.at[i, LANG_OTHER_TEXT]
+                if is_blank(detail):
+                    return val
+
+                # replace literal "Other" with actual value
+                detail = str(detail).strip()
+                parts = [p.strip() for p in val.split(args.join)]
+                parts = [detail if p == "Other" else p for p in parts]
+
+                return args.join.join(parts)
+
+            return pd.Series(
+                [replace_other(i, base.iat[i]) for i in range(len(base))],
+                index=base.index,
+            )
+
+        return base.fillna("")
+
+
+    out_df["languages"] = build_languages_series()
 
     for target_col in template.columns:
         tnorm = norm_header(target_col)
 
-        # ✅ Q10 special case
         if tnorm == res_q10_norm:
             yesno_src_col = master_norm_to_cols.get(master_q10_yesno_norm, [None])[0]
             q10a_cols_opts = breakout.get(master_q10a_norm, [])
@@ -516,24 +618,20 @@ def main() -> None:
             out_df[target_col] = [build_q10_value(i) for i in range(len(master))]
             continue
 
-        # Alias mapping
         if tnorm in ALIASES and ALIASES[tnorm] in master_norm_to_cols:
             src = master_norm_to_cols[ALIASES[tnorm]][0]
             out_df[target_col] = master[src]
             continue
 
-        # Direct match
         if tnorm in master_norm_to_cols:
             src = master_norm_to_cols[tnorm][0]
             out_df[target_col] = master[src]
             continue
 
-        # Breakout combine
         if tnorm in breakout:
             out_df[target_col] = combine_breakout(master, breakout[tnorm], args.join)
             continue
 
-        # Fuzzy match
         best_norm, _ = best_fuzzy_match(tnorm, master_norm_keys, cutoff=args.fuzzy_cutoff)
         if best_norm is not None:
             src = master_norm_to_cols[best_norm][0]
@@ -543,7 +641,7 @@ def main() -> None:
         out_df[target_col] = ""
         unmatched.append(target_col)
 
-    # --- Apply updated address resolution into OUTPUT org address fields ---
+    # --- Address resolution FIRST (so resolved exists before Webpage rules) ---
     resolved = None
     need_addr = any(
         c in out_df.columns for c in [ORG_OUT_ADDR1, ORG_OUT_ADDR2, ORG_OUT_CITY, ORG_OUT_STATE, ORG_OUT_ZIP]
@@ -581,6 +679,48 @@ def main() -> None:
             out_df[ORG_OUT_STATE] = resolved["_state"]
         if ORG_OUT_ZIP in out_df.columns:
             out_df[ORG_OUT_ZIP] = resolved["_zip"]
+
+    # --- FIXED Webpage logic (Rule 2 no longer blank) ---
+    webpage_out_col = find_output_col(out_df, "Webpage:", "Webpage")
+
+    IN_WEB_VIRTUAL  = "Please provide the website URL where more information about your virtual program / service can be found."
+    IN_WEB_PHYSICAL = "Program/Service Webpage:"
+    IN_WEB_FALLBACK = "Webpage:"
+
+    def get_series(col: str) -> pd.Series:
+        if col not in master.columns:
+            return pd.Series(pd.NA, index=master.index, dtype="object")
+        s = master[col].astype("object")
+        return s.apply(lambda v: pd.NA if is_blank(v) else v)
+
+    if webpage_out_col is not None:
+        virtual_urls  = get_series(IN_WEB_VIRTUAL)
+        physical_urls = get_series(IN_WEB_PHYSICAL)
+        fallback_urls = get_series(IN_WEB_FALLBACK)
+
+        # Determine which rows are Virtual / have a non-virtual nonblank address
+        if resolved is not None:
+            a1 = resolved["_a1"].astype("object")
+            is_virtual_row = a1.astype(str).str.strip().str.lower().eq("virtual")
+            has_physical_addr = a1.apply(lambda v: (not is_blank(v)) and str(v).strip().lower() != "virtual")
+        else:
+            is_virtual_row = pd.Series(False, index=master.index)
+            has_physical_addr = pd.Series(False, index=master.index)
+
+        # IMPORTANT FIX:
+        # Start as NA so `.isna()` is true until set, allowing Rule 2 to run.
+        chosen = pd.Series(pd.NA, index=master.index, dtype="object")
+
+        # Rule 1: Virtual -> virtual URL
+        chosen = chosen.mask(is_virtual_row, virtual_urls)
+
+        # Rule 2: NOT virtual and NOT null address -> Program/Service Webpage
+        chosen = chosen.mask(has_physical_addr & chosen.isna(), physical_urls)
+
+        # Rule 3: otherwise fallback Webpage:
+        chosen = chosen.fillna(fallback_urls).fillna("")
+
+        out_df[webpage_out_col] = chosen.apply(normalize_webpage_value)
 
     # --- Geocode (optional) ---
     out_df["lat"] = ""
@@ -661,22 +801,21 @@ def main() -> None:
             for i in range(len(out_df))
         ]
 
-    # ✅ NEW: Assign physical county from GeoJSON (NAME) using lat/long
+    # --- Physical county assignment ---
     if args.counties_geojson and args.counties_geojson.exists():
         out_df[args.county_col] = assign_county_from_geojson(
             out_df,
             lat_col="lat",
             lon_col="long",
             counties_geojson=args.counties_geojson,
-            county_name_prop=args.county_name_prop,  # NAME
-            predicate=args.county_predicate,         # within (default) or intersects
+            county_name_prop=args.county_name_prop,
+            predicate=args.county_predicate,
         )
         print(f"[OK] Assigned physical county -> column '{args.county_col}' using {args.counties_geojson}")
     else:
         out_df[args.county_col] = ""
         print("[WARN] Counties GeoJSON missing; physical county column left blank.")
 
-    # Write output
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out_df.to_csv(args.out, index=False)
 
