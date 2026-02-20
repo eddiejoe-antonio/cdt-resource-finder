@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { TOP_LANGS_30 } from "../static/translateLanguages";
 
+interface GoogleTranslateWindow extends Window {
+  google?: {
+    translate?: {
+      TranslateElement?: {
+        getInstance?: () => { restore?: () => void };
+      };
+    };
+  };
+}
+
 function getCombo(): HTMLSelectElement | null {
   return document.querySelector<HTMLSelectElement>("select.goog-te-combo");
 }
@@ -13,6 +23,18 @@ function dispatchNativeChange(el: HTMLSelectElement) {
     evt.initEvent("change", true, true);
     el.dispatchEvent(evt);
   }
+}
+
+function restoreToEnglish() {
+  const instance = (window as GoogleTranslateWindow).google?.translate?.TranslateElement?.getInstance?.();
+  if (typeof instance?.restore === "function") {
+    instance.restore();
+    return;
+  }
+
+  document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+  document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${location.hostname}`;
+  location.reload();
 }
 
 export default function TranslateDropdown() {
@@ -40,6 +62,11 @@ export default function TranslateDropdown() {
   }, [ready]);
 
   const applyLanguage = (lang: string) => {
+    if (lang === "") {
+      restoreToEnglish();
+      return;
+    }
+
     const combo = getCombo();
     if (!combo) return;
     combo.value = lang;
