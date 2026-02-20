@@ -121,9 +121,16 @@ export const ResourceCard: React.FC<Props> = ({
                   aria-hidden="true"
                   style={iconStyle}
                 />
-                <span className="text-normal">
-                  <span>{servicesText}</span>
-                </span>
+                <div
+                  style={{
+                    overflowX: "auto",
+                    whiteSpace: "nowrap",
+                    scrollbarWidth: "thin",
+                    minWidth: 0,
+                  }}
+                >
+                  {servicesText.split(", ").join(" • ")}
+                </div>
               </li>
             )}
 

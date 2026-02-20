@@ -959,7 +959,7 @@ export default function ResourceFinder() {
                   id="county-select"
                   labelNode={
                     <>
-                      <span>I am located in...</span>
+                      <span>I am seeking services in...</span>
                       <Tooltip text="Select a county to filter results. Choose 'Any county' to clear." />
                     </>
                   }
