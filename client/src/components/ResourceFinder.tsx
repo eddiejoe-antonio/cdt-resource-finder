@@ -1217,72 +1217,63 @@ export default function ResourceFinder() {
             <div className="col-12 col-lg-4">
               <div className="card" aria-label="Results list">
                 {/* Side panel scroll only (this is the behavior you want) */}
-<div className="card-body p-0" style={{ maxHeight: "70vh" }}>
-  {/* Scrollable cards area */}
-  <div
-    style={{
-      maxHeight: selectedResourceId ? "calc(70vh - 56px)" : "70vh",
-      overflow: "auto",
-    }}
-  >
-    <div className="d-flex flex-column gap-3">
-      {sidePanelResources.map((r) => {
-        const servicesToShow = audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+                <div className="card-body p-0" style={{ maxHeight: "70vh", overflow: "auto" }}>
+                  <div className="d-flex flex-column gap-3">
+                    {sidePanelResources.map((r) => {
+                      const servicesToShow =
+                        audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
 
-        const servicesLabel =
-          audience === "Resident" ? "Services" : "Supports / services for organizations";
+                      const servicesLabel =
+                        audience === "Resident"
+                          ? "Services"
+                          : "Supports / services for organizations";
 
-        const freeLowCostToShow =
-          audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
+                      const freeLowCostToShow =
+                        audience === "Resident"
+                          ? r.freeLowCostResidents
+                          : r.freeLowCostOrganizations;
 
-        return (
-          <div key={r.id}>
-            <ResourceCard
-              resource={r}
-              servicesToShow={servicesToShow}
-              servicesLabel={servicesLabel}
-              freeLowCostToShow={freeLowCostToShow}
-            />
+                      return (
+                        <div key={r.id}>
+                          <ResourceCard
+                            resource={r}
+                            servicesToShow={servicesToShow}
+                            servicesLabel={servicesLabel}
+                            freeLowCostToShow={freeLowCostToShow}
+                          />
 
-            {!selectedResourceId && (
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-outline-primary w-100"
-                  onClick={() => {
-                    setSelectedResourceId(r.id);
-                    flyToResourceId(r.id);
-                  }}
-                >
-                  Zoom to this resource
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  </div>
+                          {!selectedResourceId && (
+                            <div>
+                              <button
+                                type="button"
+                                className="btn btn-outline-primary w-100"
+                                onClick={() => {
+                                  setSelectedResourceId(r.id);
+                                  flyToResourceId(r.id);
+                                }}
+                              >
+                                Zoom to this resource
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
 
-  {/* Sticky bottom button */}
-  {selectedResourceId && (
-    <div
-      style={{
-        position: "sticky",
-        bottom: 0,
-        background: "#fff",
-      }}
-    >
-      <button
-        type="button"
-        className="btn btn-outline-primary w-100"
-        onClick={() => setSelectedResourceId(null)}
-      >
-        Back to all results
-      </button>
-    </div>
-  )}
-</div>
+                  {/* ✅ Now appears AFTER cards and scrolls normally */}
+                  {selectedResourceId && (
+                    <div className="">
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary w-100"
+                        onClick={() => setSelectedResourceId(null)}
+                      >
+                        Back to all results
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
