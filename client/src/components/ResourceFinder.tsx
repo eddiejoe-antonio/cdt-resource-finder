@@ -877,11 +877,11 @@ const renderResultsSummary = () => {
       <>
         {serviceLabels.slice(0, -1).map((l, i) => (
           <span key={l}>
-            <strong>{l}</strong>
+            <strong>"{l}"</strong>
             {i < serviceLabels.length - 2 ? ", " : ""}
           </span>
         ))}{" "}
-        or <strong>{serviceLabels[serviceLabels.length - 1]}</strong>
+        or <strong>"{serviceLabels[serviceLabels.length - 1]}"</strong>
       </>
     );
   };
@@ -889,16 +889,17 @@ const renderResultsSummary = () => {
   return (
     <p className="m-0">
       Showing <strong>{filtered.length}</strong> result{filtered.length !== 1 ? "s" : ""}
-      {selectedCounty && (
-        <> in <strong>{selectedCounty} County</strong></>
+      {selectedCounty ? (
+        <> serving <strong>{selectedCounty} County</strong></>
+      ) : (
+        <> serving <strong>All Counties</strong></>
       )}
       {serviceLabels.length > 0 && (
-        <> providing {renderServiceLabel()}</>
+        <> that help you with {renderServiceLabel()}</>
       )}
       {serviceDeliveryFilter !== "Either Virtually or In-Person" && (
         <>
-          {" "}
-          available{" "}
+          {" "}available{" "}
           <strong>
             {serviceDeliveryFilter === "Virtually" ? "virtually" : "in-person"}
           </strong>
