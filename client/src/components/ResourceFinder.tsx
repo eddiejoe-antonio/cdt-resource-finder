@@ -848,22 +848,68 @@ export default function ResourceFinder() {
   ];
 
   // ------------------ summary ------------------
-  const renderResultsSummary = () => {
-    if (selectedResourceId) {
-      const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
-      return (
-        <p className="m-0">
-          Showing <strong>{chosen?.name ?? "selected resource"}</strong>
-        </p>
-      );
-    }
-
+const renderResultsSummary = () => {
+  if (selectedResourceId) {
+    const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
     return (
       <p className="m-0">
-        Showing <strong>{filtered.length}</strong> results
+        Showing <strong>{chosen?.name ?? "selected resource"}</strong>
       </p>
     );
+  }
+
+  const activeServices = audience === "Resident" ? selectedResidentServices : selectedOrgServices;
+
+  const serviceLabels = activeServices.map((s) =>
+    audience === "Resident" ? labelForService(s as Service) : labelForOrgService(s as OrgService)
+  );
+
+  const renderServiceLabel = () => {
+    if (serviceLabels.length === 0) return null;
+    if (serviceLabels.length === 1) return <strong>{serviceLabels[0]}</strong>;
+    if (serviceLabels.length === 2)
+      return (
+        <>
+          <strong>{serviceLabels[0]}</strong> or <strong>{serviceLabels[1]}</strong>
+        </>
+      );
+    return (
+      <>
+        {serviceLabels.slice(0, -1).map((l, i) => (
+          <span key={l}>
+            <strong>{l}</strong>
+            {i < serviceLabels.length - 2 ? ", " : ""}
+          </span>
+        ))}{" "}
+        or <strong>{serviceLabels[serviceLabels.length - 1]}</strong>
+      </>
+    );
   };
+
+  return (
+    <p className="m-0">
+      Showing <strong>{filtered.length}</strong> result{filtered.length !== 1 ? "s" : ""}
+      {selectedCounty && (
+        <> in <strong>{selectedCounty} County</strong></>
+      )}
+      {serviceLabels.length > 0 && (
+        <> providing {renderServiceLabel()}</>
+      )}
+      {serviceDeliveryFilter !== "Either Virtually or In-Person" && (
+        <>
+          {" "}
+          available{" "}
+          <strong>
+            {serviceDeliveryFilter === "Virtually" ? "virtually" : "in-person"}
+          </strong>
+        </>
+      )}
+      {deferredSearchQuery.trim() && (
+        <> matching <strong>"{deferredSearchQuery.trim()}"</strong></>
+      )}
+    </p>
+  );
+};
 
   const sidePanelResources = useMemo(() => {
     if (!selectedResourceId) return sortedFiltered;
@@ -959,7 +1005,7 @@ export default function ResourceFinder() {
                   id="county-select"
                   labelNode={
                     <>
-                      <span>I am seeking services in...</span>
+                      <span>Location</span>
                       <Tooltip text="Select a county to filter results. Choose 'Any county' to clear." />
                     </>
                   }
@@ -976,8 +1022,66 @@ export default function ResourceFinder() {
 
             <div className="row m-t-md">
               <div className="col-12 col-lg-6 m-b-sm">
+                <MultiSelect
+                  id="services-multiselect"
+                  labelNode={
+                    <>
+                      <span>
+                        {audience === "Resident"
+                          ? "Service type"
+                          : "Support type"}
+                      </span>
+                      <Tooltip
+                        text={
+                          audience === "Resident"
+                            ? "Select services you need as a resident. Results match any selected service."
+                            : "Select supports your organization needs. Results match any selected support."
+                        }
+                      />
+                    </>
+                  }
+                  placeholder="All services"
+                  options={audience === "Resident" ? residentOptions : orgOptions}
+                  selected={audience === "Resident" ? selectedResidentServices : selectedOrgServices}
+                  onToggle={(val: Service | OrgService) => {
+                    if (audience === "Resident") toggleResidentService(val as Service);
+                    else toggleOrgService(val as OrgService);
+                  }}
+                  onSelectAll={() => {
+                    if (audience === "Resident") selectAllResidentServices();
+                    else selectAllOrgServices();
+                  }}
+                  onClear={() => {
+                    if (audience === "Resident") clearResidentServices();
+                    else clearOrgServices();
+                  }}
+                />
+              </div>
+                            <div className="col-12 col-lg-6 m-b-sm">
+                <SingleSelect
+                  id="delivery-select"
+                  labelNode={
+                    <>
+                      <span>Service delivery</span>
+                      <Tooltip text="Filter results by how the organization provides services (virtual, in-person, or either)." />
+                    </>
+                  }
+                  placeholder="Service delivery"
+                  options={deliveryOptions}
+                  value={serviceDeliveryFilter}
+                  onChange={(v) => {
+                    setServiceDeliveryFilter(v);
+                    setCurrentPage(1);
+                    setSelectedResourceId(null);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="row m-t-md">
+                                                <div className="col-12 col-lg-6 m-b-sm">
                 <label className="form-label d-inline-flex align-items-center" htmlFor="search">
-                  <span>I am seeking the following service...</span>
+                  <span>Open Search</span>
                   <Tooltip text="Search is fuzzy and looks across organization name, services, counties served, and other key fields." />
                 </label>
 
@@ -1078,66 +1182,6 @@ export default function ResourceFinder() {
                   </div>
                 </div>
               </div>
-
-              <div className="col-12 col-lg-6 m-b-sm">
-                <MultiSelect
-                  id="services-multiselect"
-                  labelNode={
-                    <>
-                      <span>
-                        {audience === "Resident"
-                          ? "Services that include (select all that apply)"
-                          : "Support that includes (select all that apply)"}
-                      </span>
-                      <Tooltip
-                        text={
-                          audience === "Resident"
-                            ? "Select services you need as a resident. Results match any selected service."
-                            : "Select supports your organization needs. Results match any selected support."
-                        }
-                      />
-                    </>
-                  }
-                  placeholder="All services"
-                  options={audience === "Resident" ? residentOptions : orgOptions}
-                  selected={audience === "Resident" ? selectedResidentServices : selectedOrgServices}
-                  onToggle={(val: Service | OrgService) => {
-                    if (audience === "Resident") toggleResidentService(val as Service);
-                    else toggleOrgService(val as OrgService);
-                  }}
-                  onSelectAll={() => {
-                    if (audience === "Resident") selectAllResidentServices();
-                    else selectAllOrgServices();
-                  }}
-                  onClear={() => {
-                    if (audience === "Resident") clearResidentServices();
-                    else clearOrgServices();
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="row m-t-md">
-              <div className="col-12 col-lg-6 m-b-sm">
-                <SingleSelect
-                  id="delivery-select"
-                  labelNode={
-                    <>
-                      <span>Service delivery</span>
-                      <Tooltip text="Filter results by how the organization provides services (virtual, in-person, or either)." />
-                    </>
-                  }
-                  placeholder="Service delivery"
-                  options={deliveryOptions}
-                  value={serviceDeliveryFilter}
-                  onChange={(v) => {
-                    setServiceDeliveryFilter(v);
-                    setCurrentPage(1);
-                    setSelectedResourceId(null);
-                  }}
-                />
-              </div>
-
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
@@ -1145,7 +1189,6 @@ export default function ResourceFinder() {
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>
-
                     <div>
                       <ViewToggle
                         selectedView={viewMode}
