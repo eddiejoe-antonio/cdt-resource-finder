@@ -819,10 +819,10 @@ export default function ResourceFinder() {
   };
 
   // ------------------ options ------------------
-  const audienceOptions: SelectOption<Audience>[] = [
-    { value: "Resident", label: "Resident" },
-    { value: "Organization", label: "Organization" },
-  ];
+  // const audienceOptions: SelectOption<Audience>[] = [
+  //   { value: "Resident", label: "Resident" },
+  //   { value: "Organization", label: "Organization" },
+  // ];
 
   const countyOptions: SelectOption<County | "">[] = [
     { value: "", label: "Any county" },
@@ -984,21 +984,40 @@ const renderResultsSummary = () => {
         <div className="card md:mx-36 mb-0">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
-              <div className="col-12 col-lg-6">
-                <SingleSelect
-                  id="audience-select"
-                  labelNode={
-                    <>
-                      <span>I am a/an...</span>
-                      <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
-                    </>
-                  }
-                  placeholder="Select audience"
-                  options={audienceOptions}
-                  value={audience}
-                  onChange={(v) => onAudienceChange(v)}
-                />
-              </div>
+<div className="col-12 col-lg-6">
+  <label className="form-label d-inline-flex align-items-center">
+    <span>I am a/an...</span>
+    <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
+  </label>
+  <div className="d-flex gap-4">
+    <div className="form-check m-t">
+      <input
+        className="form-check-input"
+        type="radio"
+        name="audience"
+        id="audienceResident"
+        checked={audience === "Resident"}
+        onChange={() => onAudienceChange("Resident")}
+      />
+      <label className="form-check-label" htmlFor="audienceResident">
+        Resident
+      </label>
+    </div>
+    <div className="form-check m-b">
+      <input
+        className="form-check-input"
+        type="radio"
+        name="audience"
+        id="audienceOrganization"
+        checked={audience === "Organization"}
+        onChange={() => onAudienceChange("Organization")}
+      />
+      <label className="form-check-label" htmlFor="audienceOrganization">
+        Organization
+      </label>
+    </div>
+  </div>
+</div>
 
               <div className="col-12 col-lg-6 m-b-sm">
                 <SingleSelect
