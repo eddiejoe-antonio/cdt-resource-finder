@@ -881,7 +881,7 @@ const renderResultsSummary = () => {
             {i < serviceLabels.length - 2 ? ", " : ""}
           </span>
         ))}{" "}
-        or <strong>"{serviceLabels[serviceLabels.length - 1]}"</strong>
+        or <strong>{serviceLabels[serviceLabels.length - 1]}</strong>
       </>
     );
   };
