@@ -990,7 +990,7 @@ const renderResultsSummary = () => {
     <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
   </label>
   <div className="d-flex gap-4">
-    <div className="form-check m-t">
+    <div className="form-check m-t-sm">
       <input
         className="form-check-input"
         type="radio"
@@ -1003,7 +1003,7 @@ const renderResultsSummary = () => {
         Resident
       </label>
     </div>
-    <div className="form-check m-b">
+    <div className="form-check m-t-sm">
       <input
         className="form-check-input"
         type="radio"
