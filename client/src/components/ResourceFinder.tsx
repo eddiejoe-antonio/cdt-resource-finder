@@ -1018,7 +1018,7 @@ export default function ResourceFinder() {
             <div className="row">
               <div className="col-12 col-lg-6">
                 <label className="form-label d-inline-flex align-items-center">
-                  <span>I am a/an...</span>
+                  <span>I am...</span>
                   <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
                 </label>
                 <div className="d-flex gap-4">
@@ -1032,7 +1032,7 @@ export default function ResourceFinder() {
                       onChange={() => onAudienceChange("Resident")}
                     />
                     <label className="form-check-label" htmlFor="audienceResident">
-                      Resident
+                      A Resident
                     </label>
                   </div>
                   <div className="form-check m-t-sm">
@@ -1045,7 +1045,7 @@ export default function ResourceFinder() {
                       onChange={() => onAudienceChange("Organization")}
                     />
                     <label className="form-check-label" htmlFor="audienceOrganization">
-                      Organization
+                      An Organization
                     </label>
                   </div>
                 </div>
