@@ -438,28 +438,24 @@ export default function ResourceFinder() {
 
         // Base check: resource must list this county in its served-counties field.
         if (!r.countiesSet.has(selectedCounty as County)) return false;
-        // Extra check for In-Person + County:
-        // When the user filters for in-person services in a specific county we
-        // only want resources whose *physical* address is confirmed to be in
-        // that county.  Resources that fell back to their org address (and
-        // therefore may not actually be physically present in this county) are
-        // excluded from this combination.
-        //
-        // Condition for exclusion:
-        //   • User wants In-Person (either "In-Person" only, or "Either")
-        //   • The resource claims to offer in-person services
-        //   • BUT its address was not from the verified physical-location fields
-        //   • AND its physical_county (from geocoded lat/long) doesn't match
-        //     the selected county
-        //
-        // Put differently: a resource passes this check if ANY of the following
-        // is true:
-        //   a) The user is filtering for "Virtually" only (no in-person concern)
-        //   b) The resource doesn't claim in-person at all
-        //   c) The address IS verified physical
-        //   d) The physical_county (geocoded) actually matches the selected county
 
-        if (serviceDeliveryFilter !== "Virtually" && r.hasInPerson) {
+        // Strict physical-address check — only applied when the user filters
+        // for "In-Person" only AND the resource has no virtual option.
+        //
+        // Rationale:
+        //   • "Either Virtual or In-Person": the resource serves the county
+        //     (it said so in Q6) and may do so virtually, so always show it.
+        //   • "Virtually": no address concern at all.
+        //   • "In-Person" only, and the resource is also virtual: it still
+        //     legitimately serves the county, so show it.
+        //   • "In-Person" only, in-person-only resource: we need a confirmed
+        //     physical address in this county, otherwise it might just be
+        //     headquartered elsewhere.
+        if (
+          serviceDeliveryFilter === "In-Person" &&
+          r.hasInPerson &&
+          !r.hasVirtual
+        ) {
           const addressVerified = r.addressIsVerifiedPhysical === true;
           const geocodedCountyMatches =
             r.physicalCountyNorm !== "" &&
