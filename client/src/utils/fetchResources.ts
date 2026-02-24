@@ -60,6 +60,19 @@ function normalizeFreeLowCostFromCharge(v: unknown): "Services offered free of c
   return "";
 }
 
+/**
+ * Parse the address_is_verified_physical column.
+ *
+ * The Python script writes Python booleans (True / False).
+ * We accept: True, true, 1, yes  →  true
+ *            False, false, 0, no, empty  →  false
+ */
+function parseVerifiedPhysical(v: unknown): boolean {
+  if (v == null) return false;
+  const t = String(v).trim().toLowerCase();
+  return t === "true" || t === "1" || t === "yes";
+}
+
 // ✅ Prefer exact headers when you know them, but also handle "slightly different" exports safely.
 const COL = {
   name: "Name of Organization",
@@ -102,6 +115,9 @@ const COL = {
   lat: "lat",
   long: "long",
   gmaps: "google_maps_url",
+
+  // NEW: address provenance flag written by master_to_refined.py
+  addressIsVerifiedPhysical: "address_is_verified_physical",
 } as const;
 
 function getOrgName(row: Row): string {
@@ -165,7 +181,6 @@ export function mapRowToResource(row: Row, index: number): Resource {
   const serviceArea = pickMaybe(row, COL.serviceArea, "serviceArea");
   const physicalCounty = pickMaybe(row, COL.physicalCounty, "physical_county");
 
-
   const servicesIndividualsRaw = getServicesIndividuals(row);
   const servicesIndividuals = servicesIndividualsRaw;
 
@@ -188,6 +203,11 @@ export function mapRowToResource(row: Row, index: number): Resource {
   const long = toNumberOrUndefined(row[COL.long]);
 
   const googleMapsUrl = pickMaybe(row, COL.gmaps, "googleMapsUrl", "Google Maps URL");
+
+  // NEW: address provenance flag
+  const addressIsVerifiedPhysical = parseVerifiedPhysical(
+    row[COL.addressIsVerifiedPhysical] ?? row["addressIsVerifiedPhysical"]
+  );
 
   return {
     id,
@@ -225,6 +245,9 @@ export function mapRowToResource(row: Row, index: number): Resource {
 
     lat,
     long,
+
+    // NEW
+    addressIsVerifiedPhysical,
   };
 }
 

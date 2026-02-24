@@ -34,9 +34,23 @@ NEW: Physical county assignment (point-in-polygon)
   - Uses counties GeoJSON (default: california_counties.geojson) with county name property NAME
   - Assigns county for rows with valid lat/long
 
+NEW: address_is_verified_physical column
+  - Adds column: address_is_verified_physical (True/False)
+  - True  = address came from the physical location fields (real in-person location)
+  - False = address is Virtual, blank, or fell back to org address
+  - Used by the frontend to correctly filter In-Person + County combinations:
+    only show resources as "in-person in county X" when we actually know
+    their physical location is in county X.
+
 FIXED: Webpage rule logic + normalization
   - Uses resolved Organization Address to decide which input URL field to use
   - Rule 2 no longer blanks out (chosen starts as pd.NA, and masks are applied correctly)
+
+UPDATED (per request): In-person address logic
+  - If the resource said it has in-person locations, use ONLY the physical location address fields.
+  - If it said in-person but the physical address fields are blank, output a blank address (do NOT fall back to org address).
+  - Virtual-only rows remain "Virtual".
+  - If BOTH Virtual + In-person are selected, prefer the in-person physical address.
 """
 
 from __future__ import annotations
@@ -189,12 +203,38 @@ def find_output_col(out_df: pd.DataFrame, *candidates: str) -> Optional[str]:
     return None
 
 
+def find_breakout_option_col(
+    df: pd.DataFrame,
+    *,
+    base_question: str,
+    option_contains: str,
+) -> Optional[str]:
+    """
+    Find a multi-select breakout column that looks like:
+      "<base_question>: <option>"
+    where <option> contains option_contains (case-insensitive).
+    """
+    base_norm = norm_header(base_question)
+    want = option_contains.strip().lower()
+
+    for c in df.columns:
+        if ": " not in c:
+            continue
+        left, right = c.rsplit(": ", 1)
+        if norm_header(left) != base_norm:
+            continue
+        if want in str(right).strip().lower():
+            return c
+    return None
+
+
 # ---------------------------
 # Web URL normalization helpers
 # ---------------------------
 
-_TRAILING_PUNCT = ".,;:!?)\"'”’]}>"
-_LEADING_PUNCT = "\"'“‘([{<"
+_TRAILING_PUNCT = '.,;:!?)"\'\u2018\u2019]}>'
+_LEADING_PUNCT = '"\'\u2018\u2019([{<'
+
 
 def _first_urlish_token(s: str) -> str:
     if not s:
@@ -480,6 +520,19 @@ def main() -> None:
         help="Spatial join predicate (within is strict; intersects includes boundary points).",
     )
 
+    # ------------------------------------------------------------------ #
+    # NEW: address provenance flag                                         #
+    # ------------------------------------------------------------------ #
+    ap.add_argument(
+        "--verified-physical-col",
+        default="address_is_verified_physical",
+        help=(
+            "Output column name for the address-provenance flag. "
+            "True  = address came from the physical-location fields (real in-person location). "
+            "False = address is Virtual, blank, or fell back to org address."
+        ),
+    )
+
     args = ap.parse_args()
 
     if not args.master.exists():
@@ -515,7 +568,17 @@ def main() -> None:
     master_q10_yesno_norm = norm_header(MASTER_Q10_YESNO)
     master_q10a_norm = norm_header(MASTER_Q10A_BASE)
 
+    # Delivery selection question / options
+    RES_DELIVERY_Q = "8. How does your entity/organization provide its services? Select all that apply."
     VIRTUAL_COL = "8. How does your entity/organization provide its services? Select all that apply.: Virtually"
+
+    # Robustly detect the "In person" breakout column (exports vary — handles both
+    # "In person" and "In-Person" capitalisations)
+    INPERSON_COL = (
+        "8. How does your entity/organization provide its services? Select all that apply.: In person"
+        if "8. How does your entity/organization provide its services? Select all that apply.: In person" in master.columns
+        else find_breakout_option_col(master, base_question=RES_DELIVERY_Q, option_contains="in person")
+    )
 
     PHYS_ADDR1 = "What is the physical location address where your entity/organization provides in-person services?: Address Line 1"
     PHYS_ADDR2 = "What is the physical location address where your entity/organization provides in-person services?: Address Line 2"
@@ -539,8 +602,8 @@ def main() -> None:
 
     out_df = pd.DataFrame(index=master.index)
     unmatched: List[str] = []
-    # --- Languages combined column (Q11 breakout -> languages w/ Other override) ---
 
+    # --- Languages combined column (Q11 breakout -> languages w/ Other override) ---
     LANG_Q11_BASE = "11. What language(s) does your entity/organization provide its services in? Please select all that apply."
     LANG_OTHER_COL = "11. What language(s) does your entity/organization provide its services in? Please select all that apply.: Other"
     LANG_OTHER_TEXT = "If Selected Other, please share more details below..1"
@@ -548,7 +611,6 @@ def main() -> None:
     lang_key = norm_header(LANG_Q11_BASE)
 
     def build_languages_series():
-        # find breakout key
         key = None
         if lang_key in breakout:
             key = lang_key
@@ -561,34 +623,23 @@ def main() -> None:
             print("[WARN] No language breakout columns found for Q11.")
             return pd.Series([""] * len(master), index=master.index)
 
-        # normal breakout combine
         base = combine_breakout(master, breakout[key], args.join)
 
-        # handle Other replacement
         if LANG_OTHER_COL in master.columns and LANG_OTHER_TEXT in master.columns:
-
             def replace_other(i, val):
                 if not isinstance(val, str) or "Other" not in val:
                     return val or ""
-
                 detail = master.at[i, LANG_OTHER_TEXT]
                 if is_blank(detail):
                     return val
-
-                # replace literal "Other" with actual value
                 detail = str(detail).strip()
                 parts = [p.strip() for p in val.split(args.join)]
                 parts = [detail if p == "Other" else p for p in parts]
-
                 return args.join.join(parts)
 
-            return pd.Series(
-                [replace_other(i, base.iat[i]) for i in range(len(base))],
-                index=base.index,
-            )
+            return pd.Series([replace_other(i, base.iat[i]) for i in range(len(base))], index=base.index)
 
         return base.fillna("")
-
 
     out_df["languages"] = build_languages_series()
 
@@ -641,33 +692,73 @@ def main() -> None:
         out_df[target_col] = ""
         unmatched.append(target_col)
 
-    # --- Address resolution FIRST (so resolved exists before Webpage rules) ---
+    # ------------------------------------------------------------------ #
+    # Address resolution                                                   #
+    # (must happen before Webpage rules and before provenance flag)        #
+    # ------------------------------------------------------------------ #
+
+    # address_source tracks WHY each row got its address:
+    #   "physical"  = came from explicit physical location fields
+    #   "virtual"   = row is virtual-only
+    #   "org"       = fell back to org address
+    #   "blank"     = in-person selected but physical fields were empty
+    address_source: List[str] = ["org"] * len(master)
+
     resolved = None
     need_addr = any(
         c in out_df.columns for c in [ORG_OUT_ADDR1, ORG_OUT_ADDR2, ORG_OUT_CITY, ORG_OUT_STATE, ORG_OUT_ZIP]
     )
     if need_addr:
-        def resolve_addr(row: pd.Series) -> Tuple[str, str, str, str, str]:
-            if VIRTUAL_COL in row.index and is_selected(row[VIRTUAL_COL]):
-                return ("Virtual", "", "", "", "")
-            if row_has_any(row, phys_cols):
-                return (
-                    row.get(PHYS_ADDR1, ""),
-                    row.get(PHYS_ADDR2, ""),
-                    row.get(PHYS_CITY, ""),
-                    row.get(PHYS_STATE, ""),
-                    row.get(PHYS_ZIP, ""),
-                )
+        def resolve_addr(row_tuple) -> Tuple[str, str, str, str, str, str]:
+            """
+            Returns (a1, a2, city, state, zip, source) where source is one of:
+              "physical", "virtual", "org", "blank"
+
+            Rules (in priority order):
+              1. In-person selected + physical fields populated → use physical
+              2. In-person selected + physical fields blank     → blank address
+              3. Virtual-only                                   → "Virtual"
+              4. Fallback                                       → org address
+            """
+            idx, row = row_tuple
+            in_person_selected = bool(INPERSON_COL and INPERSON_COL in row.index and is_selected(row[INPERSON_COL]))
+            virtual_selected = bool(VIRTUAL_COL in row.index and is_selected(row[VIRTUAL_COL]))
+
+            # 1) In-person wins (even if virtual also selected)
+            if in_person_selected:
+                if row_has_any(row, phys_cols):
+                    return (
+                        row.get(PHYS_ADDR1, ""),
+                        row.get(PHYS_ADDR2, ""),
+                        row.get(PHYS_CITY, ""),
+                        row.get(PHYS_STATE, ""),
+                        row.get(PHYS_ZIP, ""),
+                        "physical",
+                    )
+                # In-person selected but missing physical address → force blank
+                return ("", "", "", "", "", "blank")
+
+            # 2) Virtual-only
+            if virtual_selected:
+                return ("Virtual", "", "", "", "", "virtual")
+
+            # 3) Fallback to organisation address
             return (
                 row.get(ORG_IN_ADDR1, ""),
                 row.get(ORG_IN_ADDR2, ""),
                 row.get(ORG_IN_CITY, ""),
                 row.get(ORG_IN_STATE, ""),
                 row.get(ORG_IN_ZIP, ""),
+                "org",
             )
 
-        resolved = master.apply(resolve_addr, axis=1, result_type="expand")
+        results = master.apply(lambda row: resolve_addr((row.name, row)), axis=1, result_type="expand")
+        results.columns = ["_a1", "_a2", "_city", "_state", "_zip", "_src"]
+
+        resolved = results[["_a1", "_a2", "_city", "_state", "_zip"]].copy()
         resolved.columns = ["_a1", "_a2", "_city", "_state", "_zip"]
+
+        address_source = results["_src"].tolist()
 
         if ORG_OUT_ADDR1 in out_df.columns:
             out_df[ORG_OUT_ADDR1] = resolved["_a1"]
@@ -679,6 +770,23 @@ def main() -> None:
             out_df[ORG_OUT_STATE] = resolved["_state"]
         if ORG_OUT_ZIP in out_df.columns:
             out_df[ORG_OUT_ZIP] = resolved["_zip"]
+
+    # ------------------------------------------------------------------ #
+    # address_is_verified_physical flag                                    #
+    # True  only for rows whose address came from the physical fields.     #
+    # False for virtual, blank, and org-fallback rows.                     #
+    # ------------------------------------------------------------------ #
+    out_df[args.verified_physical_col] = [src == "physical" for src in address_source]
+
+    verified_count = sum(1 for s in address_source if s == "physical")
+    org_fallback_count = sum(1 for s in address_source if s == "org")
+    blank_count = sum(1 for s in address_source if s == "blank")
+    virtual_count = sum(1 for s in address_source if s == "virtual")
+    print(
+        f"[INFO] Address provenance → "
+        f"physical={verified_count}, org_fallback={org_fallback_count}, "
+        f"blank={blank_count}, virtual={virtual_count}"
+    )
 
     # --- FIXED Webpage logic (Rule 2 no longer blank) ---
     webpage_out_col = find_output_col(out_df, "Webpage:", "Webpage")
@@ -698,7 +806,6 @@ def main() -> None:
         physical_urls = get_series(IN_WEB_PHYSICAL)
         fallback_urls = get_series(IN_WEB_FALLBACK)
 
-        # Determine which rows are Virtual / have a non-virtual nonblank address
         if resolved is not None:
             a1 = resolved["_a1"].astype("object")
             is_virtual_row = a1.astype(str).str.strip().str.lower().eq("virtual")
@@ -707,17 +814,9 @@ def main() -> None:
             is_virtual_row = pd.Series(False, index=master.index)
             has_physical_addr = pd.Series(False, index=master.index)
 
-        # IMPORTANT FIX:
-        # Start as NA so `.isna()` is true until set, allowing Rule 2 to run.
         chosen = pd.Series(pd.NA, index=master.index, dtype="object")
-
-        # Rule 1: Virtual -> virtual URL
         chosen = chosen.mask(is_virtual_row, virtual_urls)
-
-        # Rule 2: NOT virtual and NOT null address -> Program/Service Webpage
         chosen = chosen.mask(has_physical_addr & chosen.isna(), physical_urls)
-
-        # Rule 3: otherwise fallback Webpage:
         chosen = chosen.fillna(fallback_urls).fillna("")
 
         out_df[webpage_out_col] = chosen.apply(normalize_webpage_value)

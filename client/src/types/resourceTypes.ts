@@ -40,4 +40,9 @@ export type Resource = {
   servicesOrganizationsRaw?: string;
   lat?: number;
   long?: number;
+
+  // True  = address came from verified physical location fields (real in-person location).
+  // False = address fell back to org address, is blank, or is Virtual.
+  // Used to correctly filter "In-Person + County" combinations.
+  addressIsVerifiedPhysical?: boolean;
 };

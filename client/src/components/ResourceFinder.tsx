@@ -428,11 +428,50 @@ export default function ResourceFinder() {
     const q = deferredSearchQuery.trim();
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
 
+    const isInPersonFilter = serviceDeliveryFilter === "In-Person";
+    const countySelected = Boolean(selectedCounty);
+
     return searched.filter((r) => {
-      if (selectedCounty) {
-        if (!r.countiesSet.has(selectedCounty)) return false;
+      // ── County filter ──────────────────────────────────────────────────────
+      if (countySelected) {
+        const selectedCountyNorm = normalizeValue(selectedCounty);
+
+        // Base check: resource must list this county in its served-counties field.
+        if (!r.countiesSet.has(selectedCounty as County)) return false;
+        // Extra check for In-Person + County:
+        // When the user filters for in-person services in a specific county we
+        // only want resources whose *physical* address is confirmed to be in
+        // that county.  Resources that fell back to their org address (and
+        // therefore may not actually be physically present in this county) are
+        // excluded from this combination.
+        //
+        // Condition for exclusion:
+        //   • User wants In-Person (either "In-Person" only, or "Either")
+        //   • The resource claims to offer in-person services
+        //   • BUT its address was not from the verified physical-location fields
+        //   • AND its physical_county (from geocoded lat/long) doesn't match
+        //     the selected county
+        //
+        // Put differently: a resource passes this check if ANY of the following
+        // is true:
+        //   a) The user is filtering for "Virtually" only (no in-person concern)
+        //   b) The resource doesn't claim in-person at all
+        //   c) The address IS verified physical
+        //   d) The physical_county (geocoded) actually matches the selected county
+
+        if (serviceDeliveryFilter !== "Virtually" && r.hasInPerson) {
+          const addressVerified = r.addressIsVerifiedPhysical === true;
+          const geocodedCountyMatches =
+            r.physicalCountyNorm !== "" &&
+            r.physicalCountyNorm === selectedCountyNorm;
+
+          if (!addressVerified && !geocodedCountyMatches) {
+            return false;
+          }
+        }
       }
 
+      // ── Audience / service filter ──────────────────────────────────────────
       if (audience === "Organization") {
         if (!r.hasOrgServices) return false;
         if (
@@ -450,11 +489,13 @@ export default function ResourceFinder() {
         }
       }
 
+      // ── Service delivery filter ────────────────────────────────────────────
       if (serviceDeliveryFilter === "Virtually") {
         if (!r.hasVirtual) return false;
-      } else if (serviceDeliveryFilter === "In-Person") {
+      } else if (isInPersonFilter) {
         if (!r.hasInPerson) return false;
       } else {
+        // "Either Virtually or In-Person" — must have at least one
         if (!(r.hasVirtual || r.hasInPerson)) return false;
       }
 
@@ -819,11 +860,6 @@ export default function ResourceFinder() {
   };
 
   // ------------------ options ------------------
-  // const audienceOptions: SelectOption<Audience>[] = [
-  //   { value: "Resident", label: "Resident" },
-  //   { value: "Organization", label: "Organization" },
-  // ];
-
   const countyOptions: SelectOption<County | "">[] = [
     { value: "", label: "Any county" },
     ...COUNTIES.map((c) => ({ value: c, label: `${c} County` })),
@@ -848,69 +884,69 @@ export default function ResourceFinder() {
   ];
 
   // ------------------ summary ------------------
-const renderResultsSummary = () => {
-  if (selectedResourceId) {
-    const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
-    return (
-      <p className="m-0">
-        Showing <strong>{chosen?.name ?? "selected resource"}</strong>
-      </p>
+  const renderResultsSummary = () => {
+    if (selectedResourceId) {
+      const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
+      return (
+        <p className="m-0">
+          Showing <strong>{chosen?.name ?? "selected resource"}</strong>
+        </p>
+      );
+    }
+
+    const activeServices = audience === "Resident" ? selectedResidentServices : selectedOrgServices;
+
+    const serviceLabels = activeServices.map((s) =>
+      audience === "Resident" ? labelForService(s as Service) : labelForOrgService(s as OrgService)
     );
-  }
 
-  const activeServices = audience === "Resident" ? selectedResidentServices : selectedOrgServices;
-
-  const serviceLabels = activeServices.map((s) =>
-    audience === "Resident" ? labelForService(s as Service) : labelForOrgService(s as OrgService)
-  );
-
-  const renderServiceLabel = () => {
-    if (serviceLabels.length === 0) return null;
-    if (serviceLabels.length === 1) return <strong>{serviceLabels[0]}</strong>;
-    if (serviceLabels.length === 2)
+    const renderServiceLabel = () => {
+      if (serviceLabels.length === 0) return null;
+      if (serviceLabels.length === 1) return <strong>{serviceLabels[0]}</strong>;
+      if (serviceLabels.length === 2)
+        return (
+          <>
+            <strong>{serviceLabels[0]}</strong> or <strong>{serviceLabels[1]}</strong>
+          </>
+        );
       return (
         <>
-          <strong>{serviceLabels[0]}</strong> or <strong>{serviceLabels[1]}</strong>
+          {serviceLabels.slice(0, -1).map((l, i) => (
+            <span key={l}>
+              <strong>"{l}"</strong>
+              {i < serviceLabels.length - 2 ? ", " : ""}
+            </span>
+          ))}{" "}
+          or <strong>{serviceLabels[serviceLabels.length - 1]}</strong>
         </>
       );
+    };
+
     return (
-      <>
-        {serviceLabels.slice(0, -1).map((l, i) => (
-          <span key={l}>
-            <strong>"{l}"</strong>
-            {i < serviceLabels.length - 2 ? ", " : ""}
-          </span>
-        ))}{" "}
-        or <strong>{serviceLabels[serviceLabels.length - 1]}</strong>
-      </>
+      <p className="m-0">
+        Showing <strong>{filtered.length}</strong> result{filtered.length !== 1 ? "s" : ""}
+        {selectedCounty ? (
+          <> serving <strong>{selectedCounty} County</strong></>
+        ) : (
+          <> serving <strong>All Counties</strong></>
+        )}
+        {serviceLabels.length > 0 && (
+          <> that help you with {renderServiceLabel()}</>
+        )}
+        {serviceDeliveryFilter !== "Either Virtually or In-Person" && (
+          <>
+            {" "}available{" "}
+            <strong>
+              {serviceDeliveryFilter === "Virtually" ? "virtually" : "in-person"}
+            </strong>
+          </>
+        )}
+        {deferredSearchQuery.trim() && (
+          <> matching <strong>"{deferredSearchQuery.trim()}"</strong></>
+        )}
+      </p>
     );
   };
-
-  return (
-    <p className="m-0">
-      Showing <strong>{filtered.length}</strong> result{filtered.length !== 1 ? "s" : ""}
-      {selectedCounty ? (
-        <> serving <strong>{selectedCounty} County</strong></>
-      ) : (
-        <> serving <strong>All Counties</strong></>
-      )}
-      {serviceLabels.length > 0 && (
-        <> that help you with {renderServiceLabel()}</>
-      )}
-      {serviceDeliveryFilter !== "Either Virtually or In-Person" && (
-        <>
-          {" "}available{" "}
-          <strong>
-            {serviceDeliveryFilter === "Virtually" ? "virtually" : "in-person"}
-          </strong>
-        </>
-      )}
-      {deferredSearchQuery.trim() && (
-        <> matching <strong>"{deferredSearchQuery.trim()}"</strong></>
-      )}
-    </p>
-  );
-};
 
   const sidePanelResources = useMemo(() => {
     if (!selectedResourceId) return sortedFiltered;
@@ -924,101 +960,100 @@ const renderResultsSummary = () => {
   return (
     <div className="container-fluid">
       {/* Header */}
-<header className="m-y-lg md:mx-32 lg:mx-64">
-  {/* ✅ Blue header bar with responsive layout */}
-  <div
-    className="text-white py-4 px-4"
-    style={{
-      background: "#1f2576",
-      display: "flex",
-      flexWrap: "wrap",
-      alignItems: "center",
-      gap: 12,
-      justifyContent: "space-between",
-    }}
-  >
-    <div style={{ minWidth: 0, flex: "1 1 420px" }}>
-      <div
-        className="h2 m-0"
-        style={{
-          fontWeight: 800,
-          lineHeight: 1.1,
-        }}
-      >
-        <span
-          className="inline-block"
+      <header className="m-y-lg md:mx-32 lg:mx-64">
+        {/* Blue header bar with responsive layout */}
+        <div
+          className="text-white py-4 px-4"
           style={{
-            backgroundImage: "linear-gradient(#f97316,#f97316)",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "100% 4px",
-            backgroundPosition: "0 100%",
-            paddingBottom: "6px",
+            background: "#1f2576",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 12,
+            justifyContent: "space-between",
           }}
         >
-          Digital Equity
-        </span>{" "}
-        Resource Finder
-      </div>
-    </div>
+          <div style={{ minWidth: 0, flex: "1 1 420px" }}>
+            <div
+              className="h2 m-0"
+              style={{
+                fontWeight: 800,
+                lineHeight: 1.1,
+              }}
+            >
+              <span
+                className="inline-block"
+                style={{
+                  backgroundImage: "linear-gradient(#f97316,#f97316)",
+                  backgroundRepeat: "no-repeat",
+                  backgroundSize: "100% 4px",
+                  backgroundPosition: "0 100%",
+                  paddingBottom: "6px",
+                }}
+              >
+                Digital Equity
+              </span>{" "}
+              Resource Finder
+            </div>
+          </div>
 
-    {/* ✅ On small screens this wraps under the title automatically */}
-    <div style={{ flex: "0 1 320px", minWidth: 220 }}>
-      <TranslateDropdown />
-    </div>
-  </div>
+          {/* On small screens this wraps under the title automatically */}
+          <div style={{ flex: "0 1 320px", minWidth: 220 }}>
+            <TranslateDropdown />
+          </div>
+        </div>
 
-  <p className="m-t-md px-4">
-    Welcome to the California Digital Equity Resource Finder – a tool designed to assist
-    residents and organizations to find digital inclusion programs and services in their
-    communities. The Resource Finder was updated in January 2026.
-  </p>
+        <p className="m-t-md px-4">
+          Welcome to the California Digital Equity Resource Finder – a tool designed to assist
+          residents and organizations to find digital inclusion programs and services in their
+          communities. The Resource Finder was updated in January 2026.
+        </p>
 
-  <p className="m-t-md px-4">
-    Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
-    training.
-  </p>
-</header>
-
+        <p className="m-t-md px-4">
+          Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
+          training.
+        </p>
+      </header>
 
       {/* Filters */}
       <section className="m-b-md bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
         <div className="card md:mx-36 mb-0">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
-<div className="col-12 col-lg-6">
-  <label className="form-label d-inline-flex align-items-center">
-    <span>I am a/an...</span>
-    <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
-  </label>
-  <div className="d-flex gap-4">
-    <div className="form-check m-t-sm">
-      <input
-        className="form-check-input"
-        type="radio"
-        name="audience"
-        id="audienceResident"
-        checked={audience === "Resident"}
-        onChange={() => onAudienceChange("Resident")}
-      />
-      <label className="form-check-label" htmlFor="audienceResident">
-        Resident
-      </label>
-    </div>
-    <div className="form-check m-t-sm">
-      <input
-        className="form-check-input"
-        type="radio"
-        name="audience"
-        id="audienceOrganization"
-        checked={audience === "Organization"}
-        onChange={() => onAudienceChange("Organization")}
-      />
-      <label className="form-check-label" htmlFor="audienceOrganization">
-        Organization
-      </label>
-    </div>
-  </div>
-</div>
+              <div className="col-12 col-lg-6">
+                <label className="form-label d-inline-flex align-items-center">
+                  <span>I am a/an...</span>
+                  <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
+                </label>
+                <div className="d-flex gap-4">
+                  <div className="form-check m-t-sm">
+                    <input
+                      className="form-check-input"
+                      type="radio"
+                      name="audience"
+                      id="audienceResident"
+                      checked={audience === "Resident"}
+                      onChange={() => onAudienceChange("Resident")}
+                    />
+                    <label className="form-check-label" htmlFor="audienceResident">
+                      Resident
+                    </label>
+                  </div>
+                  <div className="form-check m-t-sm">
+                    <input
+                      className="form-check-input"
+                      type="radio"
+                      name="audience"
+                      id="audienceOrganization"
+                      checked={audience === "Organization"}
+                      onChange={() => onAudienceChange("Organization")}
+                    />
+                    <label className="form-check-label" htmlFor="audienceOrganization">
+                      Organization
+                    </label>
+                  </div>
+                </div>
+              </div>
 
               <div className="col-12 col-lg-6 m-b-sm">
                 <SingleSelect
@@ -1077,7 +1112,7 @@ const renderResultsSummary = () => {
                   }}
                 />
               </div>
-                            <div className="col-12 col-lg-6 m-b-sm">
+              <div className="col-12 col-lg-6 m-b-sm">
                 <SingleSelect
                   id="delivery-select"
                   labelNode={
@@ -1099,7 +1134,7 @@ const renderResultsSummary = () => {
             </div>
 
             <div className="row m-t-md">
-                                                <div className="col-12 col-lg-6 m-b-sm">
+              <div className="col-12 col-lg-6 m-b-sm">
                 <label className="form-label d-inline-flex align-items-center" htmlFor="search">
                   <span>Open Search</span>
                   <Tooltip text="Search is fuzzy and looks across organization name, services, counties served, and other key fields." />
@@ -1279,7 +1314,7 @@ const renderResultsSummary = () => {
 
             <div className="col-12 col-lg-4">
               <div className="card" aria-label="Results list">
-                {/* Side panel scroll only (this is the behavior you want) */}
+                {/* Side panel scroll only */}
                 <div className="card-body p-0" style={{ maxHeight: "70vh", overflow: "auto" }}>
                   <div className="d-flex flex-column gap-3">
                     {sidePanelResources.map((r) => {
@@ -1324,7 +1359,7 @@ const renderResultsSummary = () => {
                     })}
                   </div>
 
-                  {/* ✅ Now appears AFTER cards and scrolls normally */}
+                  {/* Appears AFTER cards and scrolls normally */}
                   {selectedResourceId && (
                     <div className="">
                       <button
