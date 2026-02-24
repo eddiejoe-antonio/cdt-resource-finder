@@ -124,7 +124,7 @@ export function Tooltip({
         <span
           className="ca-gov-icon-info"
           aria-hidden="true"
-          style={{ fontSize: "1.1rem", lineHeight: 1 }}
+          style={{ fontSize: "1.1rem", lineHeight: 1, color: "#72717c" }}
         />
       </button>
 
