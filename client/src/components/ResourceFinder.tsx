@@ -1007,19 +1007,16 @@ if (audience === "Organization") {
           residents and organizations to find digital inclusion programs and services in their
           communities. The Resource Finder was updated in January 2026.
         </p>
-
         <p className="m-t-sm px-4">
-          Use this tool to find resources like free/low-cost devices, public Wi-Fi, or digital skills
-          training.
+          <span style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            <a href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-survey/" className="btn btn-outline-primary">
+              Add a Resource
+            </a>
+            <a href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-finder/update-resource/" className="btn btn-outline-primary">
+              Update a Resource
+            </a>
+          </span>
         </p>
-        <p className="m-t-sm px-4">
-  <a
-    href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-finder/add-or-update-resource/"
-    className="btn btn-outline-primary"
-  >
-    Find out how to Add or Update a Resource
-  </a>
-</p>
       </header>
 
       {/* Filters */}
