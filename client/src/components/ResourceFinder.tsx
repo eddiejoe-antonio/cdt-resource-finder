@@ -467,23 +467,26 @@ export default function ResourceFinder() {
         }
       }
 
-      // ── Audience / service filter ──────────────────────────────────────────
-      if (audience === "Organization") {
-        if (!r.hasOrgServices) return false;
-        if (
-          selectedOrgServices.length > 0 &&
-          !selectedOrgServices.some((s) => r.orgServicesSet.has(s))
-        ) {
-          return false;
-        }
-      } else {
-        if (
-          selectedResidentServices.length > 0 &&
-          !selectedResidentServices.some((s) => r.servicesSet.has(s))
-        ) {
-          return false;
-        }
-      }
+// ── Audience / service filter ──────────────────────────────────────────
+if (audience === "Organization") {
+  // Must have at least one org service listed
+  if (r.orgServicesSet.size === 0) return false;
+  if (
+    selectedOrgServices.length > 0 &&
+    !selectedOrgServices.some((s) => r.orgServicesSet.has(s))
+  ) {
+    return false;
+  }
+} else {
+  // Must have at least one resident service listed
+  if (r.servicesSet.size === 0) return false;
+  if (
+    selectedResidentServices.length > 0 &&
+    !selectedResidentServices.some((s) => r.servicesSet.has(s))
+  ) {
+    return false;
+  }
+}
 
       // ── Service delivery filter ────────────────────────────────────────────
       if (serviceDeliveryFilter === "Virtually") {
