@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { TOP_LANGS_30 } from "../static/translateLanguages";
+import { ALL_LANGUAGES } from "../static/translateLanguages";
 
 interface GoogleTranslateWindow extends Window {
   google?: {
@@ -96,7 +96,7 @@ export default function TranslateDropdown() {
           applyLanguage(next);
         }}
       >
-        {TOP_LANGS_30.map((l) => (
+        {ALL_LANGUAGES.map((l) => (
           <option key={l.value || "en"} value={l.value}>
             {l.label}
           </option>
