@@ -1,5 +1,7 @@
 // src/components/ResourceFinder.tsx
 import {
+  Component,
+  type ReactNode,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -43,11 +45,9 @@ type Audience = "Resident" | "Organization";
 type SortMode = "alphabetical" | "proximity";
 type PerPageOption = 12 | 36 | 72 | "all";
 
-// JSON is number[][]; we trust/own it, so cast through unknown to satisfy TS
 type CountyBoundsMap = Record<string, [[number, number], [number, number]]>;
 const CA_COUNTY_BOUNDS = caCountyBoundsRaw as unknown as CountyBoundsMap;
 
-// California bbox
 const CA_BOUNDS: mapboxgl.LngLatBoundsLike = [
   [-124.48, 32.53],
   [-114.13, 42.01],
@@ -55,6 +55,39 @@ const CA_BOUNDS: mapboxgl.LngLatBoundsLike = [
 
 const MAP_SOURCE_ID = "resources";
 const MAP_LAYER_ID = "resources-circle";
+
+// ─── TranslateErrorBoundary ───────────────────────────────────────────────────
+// Wraps ONLY the card panels (side panel + list view), NOT the map container.
+// When Google Translate mutates text nodes and React crashes with NotFoundError,
+// this catches it and remounts just the cards — the map is untouched.
+class TranslateErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; resetKey: number }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, resetKey: 0 };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    if (error instanceof DOMException && error.name === "NotFoundError") {
+      setTimeout(() => {
+        this.setState((s) => ({ hasError: false, resetKey: s.resetKey + 1 }));
+      }, 0);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) return null;
+    // No translate="no" — cards should be translated
+    return <div key={this.state.resetKey}>{this.props.children}</div>;
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
@@ -94,7 +127,7 @@ type IndexedResource = Resource & {
   hasVirtual: boolean;
   hasInPerson: boolean;
 
-  physicalCountyNorm: string; // "" if missing
+  physicalCountyNorm: string;
 };
 
 type ResourceFeatureProps = {
@@ -142,7 +175,6 @@ export default function ResourceFinder() {
 
   const [viewMode, setViewMode] = useState<ViewMode>("map");
 
-  // Filters
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCounty, setSelectedCounty] = useState<County | "">("");
@@ -153,20 +185,16 @@ export default function ResourceFinder() {
   const [serviceDeliveryFilter, setServiceDeliveryFilter] =
     useState<ServiceDeliveryFilter>("Either Virtually or In-Person");
 
-  // Sorting
   const [sortMode, setSortMode] = useState<SortMode>("alphabetical");
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState("");
 
-  // Selection
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
 
-  // Pagination (list view)
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState<PerPageOption>(12);
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
-  // Map refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
@@ -176,7 +204,6 @@ export default function ResourceFinder() {
   const prevWantedIdsRef = useRef<Set<string>>(new Set());
   const pendingSyncRef = useRef<number | null>(null);
 
-  // ------------------ map helpers ------------------
   const flyToCalifornia = useCallback((opts?: { immediate?: boolean }) => {
     const map = mapRef.current;
     if (!map) return;
@@ -240,7 +267,6 @@ export default function ResourceFinder() {
     else run();
   }, []);
 
-  // ------------------ location ------------------
   const requestLocation = useCallback(() => {
     setLocationError("");
 
@@ -293,7 +319,6 @@ export default function ResourceFinder() {
     [requestLocation, userLocation]
   );
 
-  // ------------------ data load ------------------
   useEffect(() => {
     fetchResourcesLocal()
       .then(setAllResources)
@@ -301,7 +326,6 @@ export default function ResourceFinder() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ------------------ indexed resources ------------------
   const indexedResources = useMemo<IndexedResource[]>(() => {
     const countyMap = new Map<string, County>(COUNTIES.map((c) => [normalizeValue(c), c]));
     const serviceMap = new Map<string, Service>(SERVICES.map((s) => [normalizeValue(s), s]));
@@ -351,7 +375,6 @@ export default function ResourceFinder() {
     });
   }, [allResources]);
 
-  // ------------------ build ALL map features ------------------
   const { allMapGeoJson, coordLookup, allIds } = useMemo(() => {
     const feats: ResourceFeature[] = [];
     const lookup = new Map<string, [number, number]>();
@@ -393,7 +416,6 @@ export default function ResourceFinder() {
     prevWantedIdsRef.current = new Set(allIds);
   }, [coordLookup, allIds]);
 
-  // ------------------ fuse ------------------
   const fuse = useMemo(() => {
     return new Fuse(indexedResources, {
       includeScore: false,
@@ -423,7 +445,6 @@ export default function ResourceFinder() {
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  // ------------------ filtered results ------------------
   const filtered = useMemo(() => {
     const q = deferredSearchQuery.trim();
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
@@ -432,69 +453,41 @@ export default function ResourceFinder() {
     const countySelected = Boolean(selectedCounty);
 
     return searched.filter((r) => {
-      // ── County filter ──────────────────────────────────────────────────────
       if (countySelected) {
         const selectedCountyNorm = normalizeValue(selectedCounty);
 
-        // Base check: resource must list this county in its served-counties field.
         if (!r.countiesSet.has(selectedCounty as County)) return false;
 
-        // Strict physical-address check — only applied when the user filters
-        // for "In-Person" only AND the resource has no virtual option.
-        //
-        // Rationale:
-        //   • "Either Virtual or In-Person": the resource serves the county
-        //     (it said so in Q6) and may do so virtually, so always show it.
-        //   • "Virtually": no address concern at all.
-        //   • "In-Person" only, and the resource is also virtual: it still
-        //     legitimately serves the county, so show it.
-        //   • "In-Person" only, in-person-only resource: we need a confirmed
-        //     physical address in this county, otherwise it might just be
-        //     headquartered elsewhere.
-        if (
-          serviceDeliveryFilter === "In-Person" &&
-          r.hasInPerson &&
-          !r.hasVirtual
-        ) {
+        if (serviceDeliveryFilter === "In-Person" && r.hasInPerson && !r.hasVirtual) {
           const addressVerified = r.addressIsVerifiedPhysical === true;
           const geocodedCountyMatches =
-            r.physicalCountyNorm !== "" &&
-            r.physicalCountyNorm === selectedCountyNorm;
+            r.physicalCountyNorm !== "" && r.physicalCountyNorm === selectedCountyNorm;
 
-          if (!addressVerified && !geocodedCountyMatches) {
-            return false;
-          }
+          if (!addressVerified && !geocodedCountyMatches) return false;
         }
       }
 
-// ── Audience / service filter ──────────────────────────────────────────
-if (audience === "Organization") {
-  // Must have at least one org service listed
-  if (r.orgServicesSet.size === 0) return false;
-  if (
-    selectedOrgServices.length > 0 &&
-    !selectedOrgServices.some((s) => r.orgServicesSet.has(s))
-  ) {
-    return false;
-  }
-} else {
-  // Must have at least one resident service listed
-  if (r.servicesSet.size === 0) return false;
-  if (
-    selectedResidentServices.length > 0 &&
-    !selectedResidentServices.some((s) => r.servicesSet.has(s))
-  ) {
-    return false;
-  }
-}
+      if (audience === "Organization") {
+        if (r.orgServicesSet.size === 0) return false;
+        if (
+          selectedOrgServices.length > 0 &&
+          !selectedOrgServices.some((s) => r.orgServicesSet.has(s))
+        )
+          return false;
+      } else {
+        if (r.servicesSet.size === 0) return false;
+        if (
+          selectedResidentServices.length > 0 &&
+          !selectedResidentServices.some((s) => r.servicesSet.has(s))
+        )
+          return false;
+      }
 
-      // ── Service delivery filter ────────────────────────────────────────────
       if (serviceDeliveryFilter === "Virtually") {
         if (!r.hasVirtual) return false;
       } else if (isInPersonFilter) {
         if (!r.hasInPerson) return false;
       } else {
-        // "Either Virtually or In-Person" — must have at least one
         if (!(r.hasVirtual || r.hasInPerson)) return false;
       }
 
@@ -538,7 +531,6 @@ if (audience === "Organization") {
     prevWantedIdsRef.current = nextWanted;
   }, []);
 
-  // ------------------ sorting + pagination ------------------
   const sortedFiltered = useMemo(() => {
     const sorted = [...filtered];
     const selectedCountyNorm = selectedCounty ? normalizeValue(selectedCounty) : "";
@@ -589,7 +581,7 @@ if (audience === "Organization") {
     resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ------------------ MAP INIT ------------------
+  // ── MAP INIT ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (viewMode !== "map") return;
     if (!mapContainerRef.current) return;
@@ -673,8 +665,10 @@ if (audience === "Organization") {
         const name = String(props.name ?? "");
         const address = String(props.address ?? "");
 
+        // translate="no" stops Google Translate from wrapping these text nodes
+        // in <font> tags, which would break Mapbox's popup DOM management.
         const html = `
-          <div style="max-width: 280px;">
+          <div translate="no" style="max-width: 280px;">
             <div style="font-weight: 700; margin-bottom: 4px;">${name}</div>
             ${address ? `<div style="margin-bottom: 6px;">${address}</div>` : ""}
           </div>
@@ -736,7 +730,6 @@ if (audience === "Organization") {
     };
   }, [viewMode, allMapGeoJson, flyToCalifornia, flyToCounty, flyToResourceId, syncMapVisibilityDelta]);
 
-  // Keep map source updated when data changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -746,7 +739,6 @@ if (audience === "Organization") {
       if (!src) return;
 
       src.setData(allMapGeoJson);
-
       prevWantedIdsRef.current = new Set(allIdsRef.current);
 
       const wanted = new Set(debouncedFilteredForMapRef.current.map((r) => r.id));
@@ -757,7 +749,6 @@ if (audience === "Organization") {
     else run();
   }, [allMapGeoJson, syncMapVisibilityDelta]);
 
-  // Map visibility updates from filter changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -782,7 +773,6 @@ if (audience === "Organization") {
     run();
   }, [debouncedFilteredForMap, syncMapVisibilityDelta]);
 
-  // County zoom behavior (only when NO resource is selected)
   useEffect(() => {
     if (viewMode !== "map") return;
     if (selectedResourceId) return;
@@ -791,13 +781,12 @@ if (audience === "Organization") {
     else flyToCalifornia();
   }, [viewMode, selectedCounty, selectedResourceId, flyToCounty, flyToCalifornia]);
 
-  // Resource selection zoom
   useEffect(() => {
     if (viewMode !== "map") return;
     if (selectedResourceId) flyToResourceId(selectedResourceId);
   }, [selectedResourceId, viewMode, flyToResourceId]);
 
-  // ------------------ handlers ------------------
+  // ── handlers ─────────────────────────────────────────────────────────────
   const onAudienceChange = (next: Audience) => {
     setAudience(next);
     setSelectedResidentServices([]);
@@ -858,7 +847,7 @@ if (audience === "Organization") {
     setSelectedResourceId(null);
   };
 
-  // ------------------ options ------------------
+  // ── options ───────────────────────────────────────────────────────────────
   const countyOptions: SelectOption<County | "">[] = [
     { value: "", label: "Any county" },
     ...COUNTIES.map((c) => ({ value: c, label: `${c} County` })),
@@ -882,7 +871,7 @@ if (audience === "Organization") {
     { value: "proximity", label: "Proximity to Me" },
   ];
 
-  // ------------------ summary ------------------
+  // ── summary ───────────────────────────────────────────────────────────────
   const renderResultsSummary = () => {
     if (selectedResourceId) {
       const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
@@ -929,15 +918,12 @@ if (audience === "Organization") {
         ) : (
           <> serving <strong>All Counties</strong></>
         )}
-        {serviceLabels.length > 0 && (
-          <> that help you with {renderServiceLabel()}</>
-        )}
+        {serviceLabels.length > 0 && <> that help you with {renderServiceLabel()}</>}
         {serviceDeliveryFilter !== "Either Virtually or In-Person" && (
           <>
-            {" "}available{" "}
-            <strong>
-              {serviceDeliveryFilter === "Virtually" ? "virtually" : "in-person"}
-            </strong>
+            {" "}
+            available{" "}
+            <strong>{serviceDeliveryFilter === "Virtually" ? "virtually" : "in-person"}</strong>
           </>
         )}
         {deferredSearchQuery.trim() && (
@@ -960,7 +946,6 @@ if (audience === "Organization") {
     <div className="container-fluid">
       {/* Header */}
       <header className="m-y-lg md:mx-32 lg:mx-64">
-        {/* Blue header bar with responsive layout */}
         <div
           className="text-white py-4 px-4"
           style={{
@@ -973,13 +958,7 @@ if (audience === "Organization") {
           }}
         >
           <div style={{ minWidth: 0, flex: "1 1 420px" }}>
-            <div
-              className="h2 m-0"
-              style={{
-                fontWeight: 800,
-                lineHeight: 1.1,
-              }}
-            >
+            <div className="h2 m-0" style={{ fontWeight: 800, lineHeight: 1.1 }}>
               <span
                 className="inline-block"
                 style={{
@@ -996,7 +975,6 @@ if (audience === "Organization") {
             </div>
           </div>
 
-          {/* On small screens this wraps under the title automatically */}
           <div style={{ flex: "0 1 320px", minWidth: 220 }}>
             <TranslateDropdown />
           </div>
@@ -1009,10 +987,16 @@ if (audience === "Organization") {
         </p>
         <p className="m-t-sm px-4">
           <span style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <a href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-survey/" className="btn btn-outline-primary">
+            <a
+              href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-survey/"
+              className="btn btn-outline-primary"
+            >
               Add a Resource
             </a>
-            <a href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-finder/update-resource/" className="btn btn-outline-primary">
+            <a
+              href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-finder/update-resource/"
+              className="btn btn-outline-primary"
+            >
               Update a Resource
             </a>
           </span>
@@ -1020,7 +1004,10 @@ if (audience === "Organization") {
       </header>
 
       {/* Filters */}
-      <section className="m-b-md bg-gray-50 border-b border-t border-gray-300" aria-label="Filters">
+      <section
+        className="m-b-md bg-gray-50 border-b border-t border-gray-300"
+        aria-label="Filters"
+      >
         <div className="card md:mx-36 mb-0">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
@@ -1085,11 +1072,7 @@ if (audience === "Organization") {
                   id="services-multiselect"
                   labelNode={
                     <>
-                      <span>
-                        {audience === "Resident"
-                          ? "Service type"
-                          : "Support type"}
-                      </span>
+                      <span>{audience === "Resident" ? "Service type" : "Support type"}</span>
                       <Tooltip
                         text={
                           audience === "Resident"
@@ -1101,7 +1084,9 @@ if (audience === "Organization") {
                   }
                   placeholder="All services"
                   options={audience === "Resident" ? residentOptions : orgOptions}
-                  selected={audience === "Resident" ? selectedResidentServices : selectedOrgServices}
+                  selected={
+                    audience === "Resident" ? selectedResidentServices : selectedOrgServices
+                  }
                   onToggle={(val: Service | OrgService) => {
                     if (audience === "Resident") toggleResidentService(val as Service);
                     else toggleOrgService(val as OrgService);
@@ -1139,7 +1124,10 @@ if (audience === "Organization") {
 
             <div className="row m-t-md">
               <div className="col-12 col-lg-6 m-b-sm">
-                <label className="form-label d-inline-flex align-items-center" htmlFor="search">
+                <label
+                  className="form-label d-inline-flex align-items-center"
+                  htmlFor="search"
+                >
                   <span>Open Search</span>
                   <Tooltip text="Search is fuzzy and looks across organization name, services, counties served, and other key fields." />
                 </label>
@@ -1164,7 +1152,9 @@ if (audience === "Organization") {
                       if (e.key === "Escape" && isInput && searchQuery) {
                         e.preventDefault();
                         onSearchChange("");
-                        (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                        (
+                          document.getElementById("search") as HTMLInputElement | null
+                        )?.focus();
                       }
                     }}
                   >
@@ -1193,7 +1183,9 @@ if (audience === "Organization") {
                         title="Clear search"
                         onClick={() => {
                           onSearchChange("");
-                          (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                          (
+                            document.getElementById("search") as HTMLInputElement | null
+                          )?.focus();
                         }}
                         className="position-absolute bg-transparent border-0"
                         style={{
@@ -1235,7 +1227,11 @@ if (audience === "Organization") {
                         justifyContent: "center",
                       }}
                     >
-                      <span className="ca-gov-icon-search" aria-hidden="true" style={{ color: "#ffffff" }} />
+                      <span
+                        className="ca-gov-icon-search"
+                        aria-hidden="true"
+                        style={{ color: "#ffffff" }}
+                      />
                       <span className="sr-only">Search</span>
                     </button>
                   </div>
@@ -1244,7 +1240,10 @@ if (audience === "Organization") {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label className="form-label d-inline-flex align-items-center" htmlFor="view-toggle">
+                    <label
+                      className="form-label d-inline-flex align-items-center"
+                      htmlFor="view-toggle"
+                    >
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
                     </label>
@@ -1254,7 +1253,10 @@ if (audience === "Organization") {
                         handleNavigate={(view) => {
                           setViewMode(view);
                           if (view === "map") {
-                            resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            resultsTopRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
                           }
                         }}
                       />
@@ -1263,7 +1265,6 @@ if (audience === "Organization") {
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </section>
@@ -1300,11 +1301,13 @@ if (audience === "Organization") {
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
+            {/* ── Map column — translate="no" protects Mapbox's canvas DOM ── */}
             <div className="col-12 col-lg-8">
               <div className="card">
                 <div className="card-body p-0">
                   <div
                     ref={mapContainerRef}
+                    translate="no"
                     style={{
                       width: "100%",
                       height: "70vh",
@@ -1316,106 +1319,115 @@ if (audience === "Organization") {
               </div>
             </div>
 
+            {/* ── Side panel — wrapped in boundary so card text can translate
+                  without a crash remounting the map ── */}
             <div className="col-12 col-lg-4">
-              <div className="card" aria-label="Results list">
-                {/* Side panel scroll only */}
-                <div className="card-body p-0" style={{ maxHeight: "70vh", overflow: "auto" }}>
-                  <div className="d-flex flex-column gap-3">
-                    {sidePanelResources.map((r) => {
-                      const servicesToShow =
-                        audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+              <TranslateErrorBoundary>
+                <div className="card" aria-label="Results list">
+                  <div
+                    className="card-body p-0"
+                    style={{ maxHeight: "70vh", overflow: "auto" }}
+                  >
+                    <div className="d-flex flex-column gap-3">
+                      {sidePanelResources.map((r) => {
+                        const servicesToShow =
+                          audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+                        const servicesLabel =
+                          audience === "Resident"
+                            ? "Services"
+                            : "Supports / services for organizations";
+                        const freeLowCostToShow =
+                          audience === "Resident"
+                            ? r.freeLowCostResidents
+                            : r.freeLowCostOrganizations;
 
-                      const servicesLabel =
-                        audience === "Resident"
-                          ? "Services"
-                          : "Supports / services for organizations";
+                        return (
+                          <div key={r.id}>
+                            <ResourceCard
+                              resource={r}
+                              servicesToShow={servicesToShow}
+                              servicesLabel={servicesLabel}
+                              freeLowCostToShow={freeLowCostToShow}
+                            />
 
-                      const freeLowCostToShow =
-                        audience === "Resident"
-                          ? r.freeLowCostResidents
-                          : r.freeLowCostOrganizations;
-
-                      return (
-                        <div key={r.id}>
-                          <ResourceCard
-                            resource={r}
-                            servicesToShow={servicesToShow}
-                            servicesLabel={servicesLabel}
-                            freeLowCostToShow={freeLowCostToShow}
-                          />
-
-                          {!selectedResourceId && (
-                            <div>
-                              <button
-                                type="button"
-                                className="btn btn-outline-primary w-100"
-                                onClick={() => {
-                                  setSelectedResourceId(r.id);
-                                  flyToResourceId(r.id);
-                                }}
-                              >
-                                Zoom to this resource
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Appears AFTER cards and scrolls normally */}
-                  {selectedResourceId && (
-                    <div className="">
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary w-100"
-                        onClick={() => setSelectedResourceId(null)}
-                      >
-                        Back to all results
-                      </button>
+                            {!selectedResourceId && (
+                              <div>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-primary w-100"
+                                  onClick={() => {
+                                    setSelectedResourceId(r.id);
+                                    flyToResourceId(r.id);
+                                  }}
+                                >
+                                  Zoom to this resource
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
+
+                    {selectedResourceId && (
+                      <div>
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary w-100"
+                          onClick={() => setSelectedResourceId(null)}
+                        >
+                          Back to all results
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </TranslateErrorBoundary>
             </div>
           </div>
         ) : (
-          <>
-            <div className="row">
-              {pageResources.map((r) => {
-                const servicesToShow = audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+          // ── List view — wrapped in boundary so card text can translate ──
+          <TranslateErrorBoundary>
+            <>
+              <div className="row">
+                {pageResources.map((r) => {
+                  const servicesToShow =
+                    audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
+                  const servicesLabel =
+                    audience === "Resident"
+                      ? "Services"
+                      : "Supports / services for organizations";
+                  const freeLowCostToShow =
+                    audience === "Resident"
+                      ? r.freeLowCostResidents
+                      : r.freeLowCostOrganizations;
 
-                const servicesLabel =
-                  audience === "Resident" ? "Services" : "Supports / services for organizations";
+                  return (
+                    <div key={r.id} className="col-12 col-md-6 col-lg-4 m-b-md">
+                      <ResourceCard
+                        resource={r}
+                        servicesToShow={servicesToShow}
+                        servicesLabel={servicesLabel}
+                        freeLowCostToShow={freeLowCostToShow}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
 
-                const freeLowCostToShow =
-                  audience === "Resident" ? r.freeLowCostResidents : r.freeLowCostOrganizations;
-
-                return (
-                  <div key={r.id} className="col-12 col-md-6 col-lg-4 m-b-md">
-                    <ResourceCard
-                      resource={r}
-                      servicesToShow={servicesToShow}
-                      servicesLabel={servicesLabel}
-                      freeLowCostToShow={freeLowCostToShow}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            <Pagination
-              currentPage={safePage}
-              totalPages={totalPages}
-              onPageChange={onPageChange}
-              perPage={perPage}
-              onPerPageChange={(val) => {
-                setPerPage(val);
-                setCurrentPage(1);
-                resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-            />
-          </>
+              <Pagination
+                currentPage={safePage}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+                perPage={perPage}
+                onPerPageChange={(val) => {
+                  setPerPage(val);
+                  setCurrentPage(1);
+                  resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              />
+            </>
+          </TranslateErrorBoundary>
         )}
       </section>
     </div>
