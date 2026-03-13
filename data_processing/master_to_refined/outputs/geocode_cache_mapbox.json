@@ -2886,5 +2886,13 @@
   "6205 Peachtree Dunwoody Rd, nan, Atlanta, CA, 30328": {
     "lat": 33.925065,
     "long": -84.350144
+  },
+  "nan, nan, El Dorado Hills, CA, 95762": {
+    "lat": 38.673745,
+    "long": -121.077555
+  },
+  "320 13th Street, nan, Oakland, CA, 94612": {
+    "lat": 37.802658,
+    "long": -122.26841
   }
 }

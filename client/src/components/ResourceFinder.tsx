@@ -1062,6 +1062,7 @@ export default function ResourceFinder() {
                   clearable
                   onClear={() => onCountyChange("")}
                   clearAriaLabel="Clear county"
+                  searchable={true}
                 />
               </div>
             </div>
