@@ -458,12 +458,17 @@ export default function ResourceFinder() {
 
         if (!r.countiesSet.has(selectedCounty as County)) return false;
 
-        if (serviceDeliveryFilter === "In-Person" && r.hasInPerson && !r.hasVirtual) {
-          const addressVerified = r.addressIsVerifiedPhysical === true;
+        if (serviceDeliveryFilter === "In-Person" && r.hasInPerson) {
+          // For in-person filtering, we need to confirm the physical location
+          // is actually in the selected county — not just that the org self-reports
+          // serving that county. Use geocoded county as the source of truth when available,
+          // fall back to addressIsVerifiedPhysical only if geocode is missing.
           const geocodedCountyMatches =
             r.physicalCountyNorm !== "" && r.physicalCountyNorm === selectedCountyNorm;
+          const addressVerifiedNoGeocode =
+            r.addressIsVerifiedPhysical === true && r.physicalCountyNorm === "";
 
-          if (!addressVerified && !geocodedCountyMatches) return false;
+          if (!geocodedCountyMatches && !addressVerifiedNoGeocode) return false;
         }
       }
 
