@@ -215,7 +215,8 @@ def find_breakout_option_col(
     where <option> contains option_contains (case-insensitive).
     """
     base_norm = norm_header(base_question)
-    want = option_contains.strip().lower()
+    # Normalize hyphens to spaces so "in person" matches "In-Person", "in-person", etc.
+    want = option_contains.strip().lower().replace("-", " ")
 
     for c in df.columns:
         if ": " not in c:
@@ -223,7 +224,7 @@ def find_breakout_option_col(
         left, right = c.rsplit(": ", 1)
         if norm_header(left) != base_norm:
             continue
-        if want in str(right).strip().lower():
+        if want in str(right).strip().lower().replace("-", " "):
             return c
     return None
 
@@ -572,13 +573,15 @@ def main() -> None:
     RES_DELIVERY_Q = "8. How does your entity/organization provide its services? Select all that apply."
     VIRTUAL_COL = "8. How does your entity/organization provide its services? Select all that apply.: Virtually"
 
-    # Robustly detect the "In person" breakout column (exports vary — handles both
-    # "In person" and "In-Person" capitalisations)
-    INPERSON_COL = (
-        "8. How does your entity/organization provide its services? Select all that apply.: In person"
-        if "8. How does your entity/organization provide its services? Select all that apply.: In person" in master.columns
-        else find_breakout_option_col(master, base_question=RES_DELIVERY_Q, option_contains="in person")
+    # Robustly detect the "In person" breakout column (exports vary — handles
+    # "In person", "In-Person", "In-person", etc. via case-insensitive contains)
+    INPERSON_COL = find_breakout_option_col(
+        master, base_question=RES_DELIVERY_Q, option_contains="in person"
     )
+    if INPERSON_COL is None:
+        print("[WARN] Could not find 'In person' breakout column — in-person address resolution disabled.")
+    else:
+        print(f"[INFO] In-person column detected: {INPERSON_COL}")
 
     PHYS_ADDR1 = "What is the physical location address where your entity/organization provides in-person services?: Address Line 1"
     PHYS_ADDR2 = "What is the physical location address where your entity/organization provides in-person services?: Address Line 2"
