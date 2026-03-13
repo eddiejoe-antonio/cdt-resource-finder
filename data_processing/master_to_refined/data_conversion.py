@@ -51,6 +51,12 @@ UPDATED (per request): In-person address logic
   - If it said in-person but the physical address fields are blank, output a blank address (do NOT fall back to org address).
   - Virtual-only rows remain "Virtual".
   - If BOTH Virtual + In-person are selected, prefer the in-person physical address.
+
+ENCODING FIXES:
+  - norm_header() now applies Unicode NFKD normalization so accented/special chars match reliably
+  - en-dash in hardcoded alias keys is now normalized the same way
+  - Output CSV is written as utf-8-sig so Excel opens it correctly without garbling
+  - Input reads use the caller-supplied --encoding / --errors flags throughout
 """
 
 from __future__ import annotations
@@ -59,6 +65,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 import warnings
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -73,6 +80,31 @@ import geopandas as gpd
 from shapely.geometry import Point
 
 
+# ---------------------------------------------------------------------- #
+# FIX 7: Auto-detect BOM and resolve the correct encoding before pandas   #
+# reads the file. If the file starts with a UTF-8 BOM (\xef\xbb\xbf)     #
+# we MUST read it as utf-8-sig — using plain utf-8 causes pandas to pass  #
+# the raw bytes through a latin-1 path internally which double-encodes    #
+# every non-ASCII character (é → \xc3\xa9 misread as Ã© → \xc3\x83\xc2\xa9).
+# ---------------------------------------------------------------------- #
+def resolve_encoding(path: Path, requested: str) -> str:
+    """
+    If the file has a UTF-8 BOM and the caller asked for plain 'utf-8',
+    upgrade silently to 'utf-8-sig' so pandas strips the BOM and decodes
+    correctly.  All other encodings are returned unchanged.
+    """
+    UTF8_BOM = b"\xef\xbb\xbf"
+    try:
+        with open(path, "rb") as fh:
+            header = fh.read(3)
+        if header == UTF8_BOM and requested.lower().replace("-", "") == "utf8":
+            print(f"[INFO] BOM detected in {path.name} — upgrading encoding utf-8 → utf-8-sig")
+            return "utf-8-sig"
+    except Exception:
+        pass
+    return requested
+
+
 FALSEY = {
     "", "0", "false", "no", "n", "none", "null", "nan",
     "unchecked", "not selected", "off"
@@ -80,13 +112,27 @@ FALSEY = {
 TRUTHY = {"yes", "y", "true", "1", "checked", "on"}
 
 
+# ---------------------------------------------------------------------- #
+# FIX 1: norm_header now applies NFKD Unicode normalisation so that       #
+# accented chars, en-dashes, smart-quotes, etc. all collapse to their     #
+# closest ASCII equivalent before comparison.  This means a column whose  #
+# header was round-tripped through cp1252 → utf-8 will still match.       #
+# ---------------------------------------------------------------------- #
 def norm_header(s: str) -> str:
     s = "" if s is None else str(s)
+    # Strip BOM that sometimes appears at the very start of a file
+    s = s.lstrip("\ufeff")
+    # NFKD decomposes ligatures, en-dashes, smart-quotes, etc.
+    s = unicodedata.normalize("NFKD", s)
+    # Drop combining characters (accents stripped from base letters)
+    s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.replace("\xa0", " ").replace("\t", " ")
     s = re.sub(r"\s+", " ", s).strip()
     s = s.replace("::", ":")
     s = re.sub(r":\s*$", "", s)
-    s = s.replace("...", "").replace("…", "")
+    s = s.replace("...", "").replace("\u2026", "")
+    # Normalise dashes: en-dash / em-dash → hyphen so aliases always match
+    s = s.replace("\u2013", "-").replace("\u2014", "-")
     return s.lower()
 
 
@@ -341,6 +387,7 @@ def _save_json_cache(path: Optional[Path], cache: Dict[str, Dict[str, Optional[f
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
+    # FIX 2: always write cache as utf-8 so special chars survive reruns
     path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -521,9 +568,6 @@ def main() -> None:
         help="Spatial join predicate (within is strict; intersects includes boundary points).",
     )
 
-    # ------------------------------------------------------------------ #
-    # NEW: address provenance flag                                         #
-    # ------------------------------------------------------------------ #
     ap.add_argument(
         "--verified-physical-col",
         default="address_is_verified_physical",
@@ -531,6 +575,18 @@ def main() -> None:
             "Output column name for the address-provenance flag. "
             "True  = address came from the physical-location fields (real in-person location). "
             "False = address is Virtual, blank, or fell back to org address."
+        ),
+    )
+
+    # FIX 3: new --out-encoding flag so callers can force utf-8-sig (Excel-safe)
+    # or plain utf-8 for downstream tooling that hates the BOM.
+    ap.add_argument(
+        "--out-encoding",
+        default="utf-8-sig",
+        help=(
+            "Encoding for the output CSV. "
+            "Default is utf-8-sig (UTF-8 with BOM) so Excel opens it without garbling. "
+            "Use utf-8 for pure-Linux/Python pipelines."
         ),
     )
 
@@ -543,8 +599,44 @@ def main() -> None:
     if args.counties_geojson and not args.counties_geojson.exists():
         print(f"[WARN] Counties GeoJSON not found: {args.counties_geojson} (county assignment will be blank)")
 
-    master = pd.read_csv(args.master, encoding=args.encoding, encoding_errors=args.errors)
-    template = pd.read_csv(args.template, encoding=args.encoding, encoding_errors=args.errors)
+    # FIX 4 + FIX 7: resolve encoding before reading so a UTF-8-BOM file is
+    # never mis-read as plain utf-8 (which causes double-encoding of all
+    # non-ASCII chars like e-acute -> garbled output).
+    master_enc = resolve_encoding(args.master, args.encoding)
+    template_enc = resolve_encoding(args.template, args.encoding)
+
+    master = pd.read_csv(
+        args.master,
+        encoding=master_enc,
+        encoding_errors=args.errors,
+    )
+    template = pd.read_csv(
+        args.template,
+        encoding=template_enc,
+        encoding_errors=args.errors,
+    )
+
+    # FIX 8: Repair double-encoded column names in the template.
+    # If the template CSV was itself produced by a previous bad run of this
+    # script (or any tool that read UTF-8 as latin-1 then wrote UTF-8), its
+    # column names may contain sequences like 'ï>>¿' (the UTF-8 BOM bytes
+    # mis-read as latin-1 chars) or 'Â\xa0' (non-breaking space mis-encoded).
+    # We fix them by re-encoding as latin-1 then decoding as UTF-8, which
+    # reverses the double-encode, then strip any residual BOM/whitespace.
+    def _fix_col_name(s: str) -> str:
+        try:
+            fixed = s.encode("latin-1").decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            fixed = s
+        return fixed.lstrip("\ufeff").strip()
+
+    original_cols = list(template.columns)
+    fixed_cols = [_fix_col_name(c) for c in original_cols]
+    if fixed_cols != original_cols:
+        changed = [(o, f) for o, f in zip(original_cols, fixed_cols) if o != f]
+        for orig, fixed in changed:
+            print(f"[INFO] Fixed corrupt template column name: {repr(orig)} -> {repr(fixed)}")
+        template.columns = fixed_cols
 
     master_norm_to_cols: Dict[str, List[str]] = {}
     for c in master.columns:
@@ -553,12 +645,15 @@ def main() -> None:
 
     breakout = build_breakout_map(list(master.columns))
 
+    # FIX 5: ALIASES keys are built via norm_header so the en-dash in the
+    # original "low–cost" string is normalised identically on both sides.
     ALIASES = {
         norm_header("Date Submitted"): norm_header("Entry Date"),
         norm_header("Business Phone No"): norm_header("Business Phone No:"),
         norm_header("Phone Number"): norm_header("Phone:"),
+        # en-dash in the value below is handled by norm_header → becomes "-"
         norm_header("(For ISP only) Do you have a low-cost home internet service offer or subsidy?"):
-            norm_header("4a. Do you have a low–cost home internet service offer?"),
+            norm_header("4a. Do you have a low-cost home internet service offer?"),
     }
 
     RES_Q10 = "10. To which of the following are your service available?"
@@ -573,8 +668,7 @@ def main() -> None:
     RES_DELIVERY_Q = "8. How does your entity/organization provide its services? Select all that apply."
     VIRTUAL_COL = "8. How does your entity/organization provide its services? Select all that apply.: Virtually"
 
-    # Robustly detect the "In person" breakout column (exports vary — handles
-    # "In person", "In-Person", "In-person", etc. via case-insensitive contains)
+    # Robustly detect the "In person" breakout column
     INPERSON_COL = find_breakout_option_col(
         master, base_question=RES_DELIVERY_Q, option_contains="in person"
     )
@@ -697,14 +791,8 @@ def main() -> None:
 
     # ------------------------------------------------------------------ #
     # Address resolution                                                   #
-    # (must happen before Webpage rules and before provenance flag)        #
     # ------------------------------------------------------------------ #
 
-    # address_source tracks WHY each row got its address:
-    #   "physical"  = came from explicit physical location fields
-    #   "virtual"   = row is virtual-only
-    #   "org"       = fell back to org address
-    #   "blank"     = in-person selected but physical fields were empty
     address_source: List[str] = ["org"] * len(master)
 
     resolved = None
@@ -713,21 +801,10 @@ def main() -> None:
     )
     if need_addr:
         def resolve_addr(row_tuple) -> Tuple[str, str, str, str, str, str]:
-            """
-            Returns (a1, a2, city, state, zip, source) where source is one of:
-              "physical", "virtual", "org", "blank"
-
-            Rules (in priority order):
-              1. In-person selected + physical fields populated → use physical
-              2. In-person selected + physical fields blank     → blank address
-              3. Virtual-only                                   → "Virtual"
-              4. Fallback                                       → org address
-            """
             idx, row = row_tuple
             in_person_selected = bool(INPERSON_COL and INPERSON_COL in row.index and is_selected(row[INPERSON_COL]))
             virtual_selected = bool(VIRTUAL_COL in row.index and is_selected(row[VIRTUAL_COL]))
 
-            # 1) In-person wins (even if virtual also selected)
             if in_person_selected:
                 if row_has_any(row, phys_cols):
                     return (
@@ -738,14 +815,11 @@ def main() -> None:
                         row.get(PHYS_ZIP, ""),
                         "physical",
                     )
-                # In-person selected but missing physical address → force blank
                 return ("", "", "", "", "", "blank")
 
-            # 2) Virtual-only
             if virtual_selected:
                 return ("Virtual", "", "", "", "", "virtual")
 
-            # 3) Fallback to organisation address
             return (
                 row.get(ORG_IN_ADDR1, ""),
                 row.get(ORG_IN_ADDR2, ""),
@@ -776,8 +850,6 @@ def main() -> None:
 
     # ------------------------------------------------------------------ #
     # address_is_verified_physical flag                                    #
-    # True  only for rows whose address came from the physical fields.     #
-    # False for virtual, blank, and org-fallback rows.                     #
     # ------------------------------------------------------------------ #
     out_df[args.verified_physical_col] = [src == "physical" for src in address_source]
 
@@ -791,7 +863,7 @@ def main() -> None:
         f"blank={blank_count}, virtual={virtual_count}"
     )
 
-    # --- FIXED Webpage logic (Rule 2 no longer blank) ---
+    # --- FIXED Webpage logic ---
     webpage_out_col = find_output_col(out_df, "Webpage:", "Webpage")
 
     IN_WEB_VIRTUAL  = "Please provide the website URL where more information about your virtual program / service can be found."
@@ -919,9 +991,13 @@ def main() -> None:
         print("[WARN] Counties GeoJSON missing; physical county column left blank.")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    out_df.to_csv(args.out, index=False)
 
-    print(f"[OK] Wrote: {args.out}")
+    # FIX 6: write output as utf-8-sig (BOM-prefixed UTF-8) by default so
+    # Excel and other Windows tools open it without garbling special chars.
+    # Callers who want plain utf-8 can pass --out-encoding utf-8.
+    out_df.to_csv(args.out, index=False, encoding=args.out_encoding)
+
+    print(f"[OK] Wrote: {args.out}  (encoding={args.out_encoding})")
     print(f"[INFO] Rows: {len(out_df):,}")
     print(f"[INFO] Columns: {out_df.shape[1]:,}")
 
