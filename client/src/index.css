@@ -15,7 +15,7 @@ html, body {
   padding: 0;
   width: 100%;
   height: auto;
-  min-height: 100vh !important;
+  min-height: 100vh!important;
 }
 
 body {
@@ -26,5 +26,5 @@ body {
 #root {
   width: 100%;
   height: auto;
-  min-height: 100vh;
+  min-height: 100vh!important;
 }
