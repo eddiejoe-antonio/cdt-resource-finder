@@ -1316,7 +1316,7 @@ export default function ResourceFinder() {
                     translate="no"
                     style={{
                       width: "100%",
-                      height: "100vh",
+                      height: "80vh",
                       minHeight: "420px",
                       borderRadius: "4px",
                     }}
@@ -1332,7 +1332,7 @@ export default function ResourceFinder() {
                 <div className="card" aria-label="Results list">
                   <div
                     className="card-body p-0"
-                    style={{ maxHeight: "70vh", overflow: "auto" }}
+                    style={{ maxHeight: "80vh", overflow: "auto" }}
                   >
                     <div className="d-flex flex-column gap-3">
                       {sidePanelResources.map((r) => {
