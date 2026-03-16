@@ -5,7 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/api": "http://localhost:5050",
+      "/api/csv": {
+        target: "https://broadbandforall.cdt.ca.gov",
+        changeOrigin: true,
+        rewrite: () =>
+          "/wp-content/uploads/sites/19/2026/03/converted.csv",
+      },
     },
   },
 });
