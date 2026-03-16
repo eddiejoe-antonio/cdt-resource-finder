@@ -1316,7 +1316,7 @@ export default function ResourceFinder() {
                     translate="no"
                     style={{
                       width: "100%",
-                      height: "70vh",
+                      height: "100vh",
                       minHeight: "420px",
                       borderRadius: "4px",
                     }}
