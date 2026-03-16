@@ -12,6 +12,7 @@
   "dependencies": {
     "@cagovweb/state-template": "^6.5.1",
     "@heroicons/react": "^2.2.0",
+    "@vercel/analytics": "^2.0.1",
     "fuse.js": "^7.1.0",
     "lucide-react": "^0.563.0",
     "mapbox-gl": "^3.18.1",
