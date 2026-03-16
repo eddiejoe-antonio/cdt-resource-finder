@@ -177,7 +177,7 @@ export default function ResourceFinder() {
 
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCounty, setSelectedCounty] = useState<County | "">("");
+  const [selectedCounty, setSelectedCounty] = useState<County | "">("Los Angeles");
 
   const [selectedResidentServices, setSelectedResidentServices] = useState<Service[]>([]);
   const [selectedOrgServices, setSelectedOrgServices] = useState<OrgService[]>([]);
