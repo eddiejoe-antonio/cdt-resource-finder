@@ -206,6 +206,9 @@ export default function ResourceFinder() {
   const prevWantedIdsRef = useRef<Set<string>>(new Set());
   const pendingSyncRef = useRef<number | null>(null);
 
+  // ── Flag to suppress visibility sync while the camera is animating ──
+  const isFlyingRef = useRef(false);
+
   const flyToCalifornia = useCallback((opts?: { immediate?: boolean }) => {
     const map = mapRef.current;
     if (!map) return;
@@ -214,7 +217,7 @@ export default function ResourceFinder() {
       map.fitBounds(CA_BOUNDS, {
         padding: 40,
         maxZoom: 6.5,
-        duration: opts?.immediate ? 0 : 500,
+        duration: opts?.immediate ? 0 : 800,
         essential: true,
       });
     };
@@ -238,7 +241,7 @@ export default function ResourceFinder() {
         map.fitBounds(b, {
           padding: 40,
           maxZoom: 9,
-          duration: opts?.immediate ? 0 : 500,
+          duration: opts?.immediate ? 0 : 800,
           essential: true,
         });
       };
@@ -447,6 +450,7 @@ export default function ResourceFinder() {
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
+  // ── Card/list filter — uses countiesServedRaw so virtual-only orgs appear ──
   const filtered = useMemo(() => {
     const q = deferredSearchQuery.trim();
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
@@ -537,6 +541,57 @@ export default function ResourceFinder() {
 
     prevWantedIdsRef.current = nextWanted;
   }, []);
+
+  // ── Map dot visibility: only show dots physically in the selected county ──
+  // Cards use countiesServedRaw (virtual orgs appear in cards but have no dot).
+  const getMapWantedIds = useCallback(
+    (resources: IndexedResource[], county: County | ""): Set<string> => {
+      const countyNorm = county ? normalizeValue(county) : "";
+      return new Set(
+        resources
+          .filter((r) => {
+            if (!countyNorm) return true; // no county — show all dots
+            return r.physicalCountyNorm === countyNorm; // county selected — physical match only
+          })
+          .filter((r) => coordByIdRef.current.has(r.id)) // must have map coords
+          .map((r) => r.id)
+      );
+    },
+    []
+  );
+
+  // ── Fly to county or CA, suppress visibility sync during animation,
+  //    then re-sync once the camera settles on moveend. ──────────────────────
+  const flyToCountyOrCalifornia = useCallback(
+    (county: County | "") => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      if (pendingSyncRef.current) {
+        cancelAnimationFrame(pendingSyncRef.current);
+        pendingSyncRef.current = null;
+      }
+
+      isFlyingRef.current = true;
+
+      const doFly = () => {
+        if (county) flyToCounty(county as County);
+        else flyToCalifornia();
+
+        map.once("moveend", () => {
+          isFlyingRef.current = false;
+          const wanted = getMapWantedIds(
+            debouncedFilteredForMapRef.current,
+            selectedCountyRef.current
+          );
+          syncMapVisibilityDelta(map, wanted);
+        });
+      };
+
+      requestAnimationFrame(doFly);
+    },
+    [flyToCounty, flyToCalifornia, getMapWantedIds, syncMapVisibilityDelta]
+  );
 
   const sortedFiltered = useMemo(() => {
     const sorted = [...filtered];
@@ -651,7 +706,10 @@ export default function ResourceFinder() {
 
       prevWantedIdsRef.current = new Set(allIdsRef.current);
 
-      const wanted = new Set(debouncedFilteredForMapRef.current.map((r) => r.id));
+      const wanted = getMapWantedIds(
+        debouncedFilteredForMapRef.current,
+        selectedCountyRef.current
+      );
       syncMapVisibilityDelta(map, wanted);
 
       const showHover = (e: mapboxgl.MapMouseEvent) => {
@@ -735,7 +793,7 @@ export default function ResourceFinder() {
       map.remove();
       mapRef.current = null;
     };
-  }, [viewMode, allMapGeoJson, flyToCalifornia, flyToCounty, flyToResourceId, syncMapVisibilityDelta]);
+  }, [viewMode, allMapGeoJson, flyToCalifornia, flyToCounty, flyToResourceId, getMapWantedIds, syncMapVisibilityDelta]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -748,22 +806,27 @@ export default function ResourceFinder() {
       src.setData(allMapGeoJson);
       prevWantedIdsRef.current = new Set(allIdsRef.current);
 
-      const wanted = new Set(debouncedFilteredForMapRef.current.map((r) => r.id));
+      const wanted = getMapWantedIds(
+        debouncedFilteredForMapRef.current,
+        selectedCountyRef.current
+      );
       syncMapVisibilityDelta(map, wanted);
     };
 
     if (!map.isStyleLoaded()) map.once("load", run);
     else run();
-  }, [allMapGeoJson, syncMapVisibilityDelta]);
+  }, [allMapGeoJson, getMapWantedIds, syncMapVisibilityDelta]);
 
+  // ── Visibility sync effect — skipped while camera is animating ────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const run = () => {
       if (!map.getSource(MAP_SOURCE_ID)) return;
+      if (isFlyingRef.current) return; // let moveend handle it instead
 
-      const wanted = new Set(debouncedFilteredForMap.map((r) => r.id));
+      const wanted = getMapWantedIds(debouncedFilteredForMap, selectedCountyRef.current);
 
       if (pendingSyncRef.current) cancelAnimationFrame(pendingSyncRef.current);
       pendingSyncRef.current = requestAnimationFrame(() => {
@@ -778,20 +841,7 @@ export default function ResourceFinder() {
     }
 
     run();
-  }, [debouncedFilteredForMap, syncMapVisibilityDelta]);
-
-  useEffect(() => {
-    if (viewMode !== "map") return;
-    if (selectedResourceId) return;
-
-    if (selectedCounty) flyToCounty(selectedCounty as County);
-    else flyToCalifornia();
-  }, [viewMode, selectedCounty, selectedResourceId, flyToCounty, flyToCalifornia]);
-
-  useEffect(() => {
-    if (viewMode !== "map") return;
-    if (selectedResourceId) flyToResourceId(selectedResourceId);
-  }, [selectedResourceId, viewMode, flyToResourceId]);
+  }, [debouncedFilteredForMap, getMapWantedIds, syncMapVisibilityDelta]);
 
   // ── handlers ─────────────────────────────────────────────────────────────
   const onAudienceChange = (next: Audience) => {
@@ -808,10 +858,12 @@ export default function ResourceFinder() {
     setSelectedResourceId(null);
   };
 
+  // ── County change: update state AND fly+sync imperatively ────────────────
   const onCountyChange = (next: County | "") => {
     setSelectedCounty(next);
     setCurrentPage(1);
     setSelectedResourceId(null);
+    flyToCountyOrCalifornia(next);
   };
 
   const toggleResidentService = (svc: Service) => {
@@ -1382,7 +1434,10 @@ export default function ResourceFinder() {
                         <button
                           type="button"
                           className="btn btn-outline-primary w-100"
-                          onClick={() => setSelectedResourceId(null)}
+                          onClick={() => {
+                            setSelectedResourceId(null);
+                            flyToCountyOrCalifornia(selectedCounty);
+                          }}
                         >
                           Back to all results
                         </button>
