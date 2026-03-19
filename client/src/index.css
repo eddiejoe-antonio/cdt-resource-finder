@@ -13,18 +13,21 @@
 html, body {
   margin: 0;
   padding: 0;
-  width: 100%;
   height: auto;
-  min-height: 100vh!important;
+  min-height: 100%;
+  overflow: visible !important;
+}
+ 
+#root, .app, .main, .wrapper, .container {
+  height: auto !important;
+  min-height: 100vh;
+  overflow: visible !important;
+}
+ 
+.content, .page, .layout, .page-wrapper, .main-content {
+  height: auto !important;
+  min-height: 100vh;
+  overflow: visible !important;
 }
 
-body {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-#root {
-  width: 100%;
-  height: auto;
-  min-height: 100vh!important;
-}
+ 
