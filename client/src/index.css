@@ -12,21 +12,19 @@
 html, body {
   margin: 0;
   padding: 0;
-  height: auto;
-  min-height: 100%;
+  height: auto !important;
+  min-height: 100% !important;
   overflow: visible !important;
 }
  
 #root, .app, .main, .wrapper, .container {
   height: auto !important;
-  min-height: 100vh;
+  min-height: 100vh !important;
   overflow: visible !important;
 }
  
 .content, .page, .layout, .page-wrapper, .main-content {
   height: auto !important;
-  min-height: 100vh;
+  min-height: 100vh !important;
   overflow: visible !important;
 }
-
- 
