@@ -1042,7 +1042,7 @@ export default function ResourceFinder() {
         <p className="m-t-md px-4">
           Welcome to the California Digital Equity Resource Finder – a tool designed to assist
           residents and organizations to find digital inclusion programs and services in their
-          communities. The Resource Finder was updated in January 2026.
+          communities. The Resource Finder was updated in March 2026.
         </p>
         <p className="m-t-sm px-4">
           <span style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
