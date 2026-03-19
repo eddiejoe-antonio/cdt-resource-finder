@@ -9,7 +9,6 @@
   background-color: var(--secondary-color); /* CA orange */
 }
 
-/* Remove any height constraints that create scrollbars */
 html, body {
   margin: 0;
   padding: 0;
