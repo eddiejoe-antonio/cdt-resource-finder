@@ -195,7 +195,6 @@ export default function ResourceFinder() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState<PerPageOption>(12);
-  const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -640,7 +639,6 @@ export default function ResourceFinder() {
   const onPageChange = (page: number) => {
     const clamped = Math.max(1, Math.min(totalPages, page));
     setCurrentPage(clamped);
-    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // ── MAP INIT ──────────────────────────────────────────────────────────────
@@ -1325,8 +1323,6 @@ export default function ResourceFinder() {
 
       {/* Results */}
       <section className="md:mx-36" aria-label="Results">
-        <div ref={resultsTopRef} />
-
         <div className="row g-3 align-items-start align-items-md-end m-b-md">
           <div className="col-12 col-lg-8">{renderResultsSummary()}</div>
 
@@ -1472,17 +1468,16 @@ export default function ResourceFinder() {
                 })}
               </div>
 
-              <Pagination
-                currentPage={safePage}
-                totalPages={totalPages}
-                onPageChange={onPageChange}
-                perPage={perPage}
-                onPerPageChange={(val) => {
-                  setPerPage(val);
-                  setCurrentPage(1);
-                  resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              />
+            <Pagination
+              currentPage={safePage}
+              totalPages={totalPages}
+              onPageChange={onPageChange}
+              perPage={perPage}
+              onPerPageChange={(val) => {
+                setPerPage(val);
+                setCurrentPage(1);
+              }}
+            />
             </>
           </TranslateErrorBoundary>
         )}
