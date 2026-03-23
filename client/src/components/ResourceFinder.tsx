@@ -1312,12 +1312,6 @@ export default function ResourceFinder() {
                         selectedView={viewMode}
                         handleNavigate={(view) => {
                           setViewMode(view);
-                          if (view === "map") {
-                            resultsTopRef.current?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            });
-                          }
                         }}
                       />
                     </div>
