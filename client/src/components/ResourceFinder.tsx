@@ -1002,7 +1002,10 @@ export default function ResourceFinder() {
   return (
     <div className="container-fluid">
       {/* Header */}
-      <header className="m-y-lg md:mx-32 lg:mx-64">
+      <header 
+        className="m-y-lg md:mx-32 lg:mx-64"
+        style={{ marginTop: "0px !important" } as React.CSSProperties}
+        >
         <div
           className="text-white py-4 px-4"
           style={{
@@ -1316,7 +1319,7 @@ export default function ResourceFinder() {
                   </div>
                 </div>
               </div>
-            </div>
+            </div>  
           </div>
         </div>
       </section>
