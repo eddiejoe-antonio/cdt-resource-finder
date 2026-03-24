@@ -56,10 +56,6 @@ const CA_BOUNDS: mapboxgl.LngLatBoundsLike = [
 const MAP_SOURCE_ID = "resources";
 const MAP_LAYER_ID = "resources-circle";
 
-// ─── TranslateErrorBoundary ───────────────────────────────────────────────────
-// Wraps ONLY the card panels (side panel + list view), NOT the map container.
-// When Google Translate mutates text nodes and React crashes with NotFoundError,
-// this catches it and remounts just the cards — the map is untouched.
 class TranslateErrorBoundary extends Component<
   { children: ReactNode },
   { hasError: boolean; resetKey: number }
@@ -83,11 +79,9 @@ class TranslateErrorBoundary extends Component<
 
   render() {
     if (this.state.hasError) return null;
-    // No translate="no" — cards should be translated
     return <div key={this.state.resetKey}>{this.props.children}</div>;
   }
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
@@ -118,15 +112,12 @@ type IndexedResource = Resource & {
   countiesSet: Set<County>;
   servicesSet: Set<Service>;
   servicesLabels: string[];
-
   orgServicesRaw: string;
   orgServicesSet: Set<OrgService>;
   orgServicesLabels: string[];
   hasOrgServices: boolean;
-
   hasVirtual: boolean;
   hasInPerson: boolean;
-
   physicalCountyNorm: string;
 };
 
@@ -199,13 +190,12 @@ export default function ResourceFinder() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
+  const resultsHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
   const allIdsRef = useRef<string[]>([]);
   const prevWantedIdsRef = useRef<Set<string>>(new Set());
   const pendingSyncRef = useRef<number | null>(null);
-
-  // ── Flag to suppress visibility sync while the camera is animating ──
   const isFlyingRef = useRef(false);
 
   const flyToCalifornia = useCallback((opts?: { immediate?: boolean }) => {
@@ -365,15 +355,12 @@ export default function ResourceFinder() {
         countiesSet: new Set(counties),
         servicesSet: new Set(services),
         servicesLabels: services.map((s) => labelForService(s)),
-
         orgServicesRaw: orgRaw,
         orgServicesSet: new Set(orgList),
         orgServicesLabels: orgList.map((s) => labelForOrgService(s)),
         hasOrgServices: orgList.length > 0,
-
         hasInPerson: flags.hasInPerson,
         hasVirtual: flags.hasVirtual,
-
         physicalCountyNorm,
       };
     });
@@ -449,7 +436,6 @@ export default function ResourceFinder() {
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  // ── Card/list filter — uses countiesServedRaw so virtual-only orgs appear ──
   const filtered = useMemo(() => {
     const q = deferredSearchQuery.trim();
     const searched: IndexedResource[] = !q ? indexedResources : fuse.search(q).map((x) => x.item);
@@ -464,10 +450,6 @@ export default function ResourceFinder() {
         if (!r.countiesSet.has(selectedCounty as County)) return false;
 
         if (serviceDeliveryFilter === "In-Person" && r.hasInPerson) {
-          // For in-person filtering, we need to confirm the physical location
-          // is actually in the selected county — not just that the org self-reports
-          // serving that county. Use geocoded county as the source of truth when available,
-          // fall back to addressIsVerifiedPhysical only if geocode is missing.
           const geocodedCountyMatches =
             r.physicalCountyNorm !== "" && r.physicalCountyNorm === selectedCountyNorm;
           const addressVerifiedNoGeocode =
@@ -482,15 +464,17 @@ export default function ResourceFinder() {
         if (
           selectedOrgServices.length > 0 &&
           !selectedOrgServices.some((s) => r.orgServicesSet.has(s))
-        )
+        ) {
           return false;
+        }
       } else {
         if (r.servicesSet.size === 0) return false;
         if (
           selectedResidentServices.length > 0 &&
           !selectedResidentServices.some((s) => r.servicesSet.has(s))
-        )
+        ) {
           return false;
+        }
       }
 
       if (serviceDeliveryFilter === "Virtually") {
@@ -541,26 +525,22 @@ export default function ResourceFinder() {
     prevWantedIdsRef.current = nextWanted;
   }, []);
 
-  // ── Map dot visibility: only show dots physically in the selected county ──
-  // Cards use countiesServedRaw (virtual orgs appear in cards but have no dot).
   const getMapWantedIds = useCallback(
     (resources: IndexedResource[], county: County | ""): Set<string> => {
       const countyNorm = county ? normalizeValue(county) : "";
       return new Set(
         resources
           .filter((r) => {
-            if (!countyNorm) return true; // no county — show all dots
-            return r.physicalCountyNorm === countyNorm; // county selected — physical match only
+            if (!countyNorm) return true;
+            return r.physicalCountyNorm === countyNorm;
           })
-          .filter((r) => coordByIdRef.current.has(r.id)) // must have map coords
+          .filter((r) => coordByIdRef.current.has(r.id))
           .map((r) => r.id)
       );
     },
     []
   );
 
-  // ── Fly to county or CA, suppress visibility sync during animation,
-  //    then re-sync once the camera settles on moveend. ──────────────────────
   const flyToCountyOrCalifornia = useCallback(
     (county: County | "") => {
       const map = mapRef.current;
@@ -641,7 +621,6 @@ export default function ResourceFinder() {
     setCurrentPage(clamped);
   };
 
-  // ── MAP INIT ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (viewMode !== "map") return;
     if (!mapContainerRef.current) return;
@@ -728,8 +707,6 @@ export default function ResourceFinder() {
         const name = String(props.name ?? "");
         const address = String(props.address ?? "");
 
-        // translate="no" stops Google Translate from wrapping these text nodes
-        // in <font> tags, which would break Mapbox's popup DOM management.
         const html = `
           <div translate="no" style="max-width: 280px;">
             <div style="font-weight: 700; margin-bottom: 4px;">${name}</div>
@@ -815,14 +792,13 @@ export default function ResourceFinder() {
     else run();
   }, [allMapGeoJson, getMapWantedIds, syncMapVisibilityDelta]);
 
-  // ── Visibility sync effect — skipped while camera is animating ────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const run = () => {
       if (!map.getSource(MAP_SOURCE_ID)) return;
-      if (isFlyingRef.current) return; // let moveend handle it instead
+      if (isFlyingRef.current) return;
 
       const wanted = getMapWantedIds(debouncedFilteredForMap, selectedCountyRef.current);
 
@@ -841,7 +817,6 @@ export default function ResourceFinder() {
     run();
   }, [debouncedFilteredForMap, getMapWantedIds, syncMapVisibilityDelta]);
 
-  // ── handlers ─────────────────────────────────────────────────────────────
   const onAudienceChange = (next: Audience) => {
     setAudience(next);
     setSelectedResidentServices([]);
@@ -856,7 +831,6 @@ export default function ResourceFinder() {
     setSelectedResourceId(null);
   };
 
-  // ── County change: update state AND fly+sync imperatively ────────────────
   const onCountyChange = (next: County | "") => {
     setSelectedCounty(next);
     setCurrentPage(1);
@@ -904,7 +878,6 @@ export default function ResourceFinder() {
     setSelectedResourceId(null);
   };
 
-  // ── options ───────────────────────────────────────────────────────────────
   const countyOptions: SelectOption<County | "">[] = [
     { value: "", label: "Any county" },
     ...COUNTIES.map((c) => ({ value: c, label: `${c} County` })),
@@ -928,7 +901,6 @@ export default function ResourceFinder() {
     { value: "proximity", label: "Proximity to Me" },
   ];
 
-  // ── summary ───────────────────────────────────────────────────────────────
   const renderResultsSummary = () => {
     if (selectedResourceId) {
       const chosen = sortedFiltered.find((r) => r.id === selectedResourceId);
@@ -958,7 +930,7 @@ export default function ResourceFinder() {
         <>
           {serviceLabels.slice(0, -1).map((l, i) => (
             <span key={l}>
-              <strong>"{l}"</strong>
+              <strong>{l}</strong>
               {i < serviceLabels.length - 2 ? ", " : ""}
             </span>
           ))}{" "}
@@ -996,16 +968,25 @@ export default function ResourceFinder() {
     return chosen ? [chosen] : sortedFiltered;
   }, [sortedFiltered, selectedResourceId]);
 
-  if (loading) return <div className="p-4">Loading…</div>;
-  if (err) return <div className="p-4 text-red-700">Error: {err}</div>;
+  if (loading) {
+    return (
+      <div className="p-4" role="status" aria-live="polite">
+        Loading…
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="p-4 text-red-700" role="alert">
+        Error: {err}
+      </div>
+    );
+  }
 
   return (
     <div className="container-fluid">
-      {/* Header */}
-      <header 
-        className="m-y-lg md:mx-32 lg:mx-64"
-        style={{ marginTop: "0px !important" } as React.CSSProperties}
-        >
+      <header className="iframe-styles m-y-lg md:mx-32 lg:mx-64" style={{ marginTop: 0 }}>
         <div
           className="text-white py-4 px-4"
           style={{
@@ -1018,7 +999,7 @@ export default function ResourceFinder() {
           }}
         >
           <div style={{ minWidth: 0, flex: "1 1 420px" }}>
-            <div className="h2 m-0" style={{ fontWeight: 800, lineHeight: 1.1 }}>
+            <h1 className="h2 m-0" style={{ fontWeight: 800, lineHeight: 1.1 }}>
               <span
                 className="inline-block"
                 style={{
@@ -1032,7 +1013,7 @@ export default function ResourceFinder() {
                 Digital Equity
               </span>{" "}
               Resource Finder
-            </div>
+            </h1>
           </div>
 
           <div style={{ flex: "0 1 320px", minWidth: 220 }}>
@@ -1063,11 +1044,14 @@ export default function ResourceFinder() {
         </p>
       </header>
 
-      {/* Filters */}
       <section
         className="m-b-md bg-gray-50 border-b border-t border-gray-300"
-        aria-label="Filters"
+        aria-labelledby="filters-heading"
       >
+        <h2 id="filters-heading" className="sr-only">
+          Filters
+        </h2>
+
         <div className="card md:mx-36 mb-0">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
@@ -1162,6 +1146,7 @@ export default function ResourceFinder() {
                   }}
                 />
               </div>
+
               <div className="col-12 col-lg-6 m-b-sm">
                 <SingleSelect
                   id="delivery-select"
@@ -1185,119 +1170,122 @@ export default function ResourceFinder() {
 
             <div className="row m-t-md">
               <div className="col-12 col-lg-6 m-b-sm">
-                <label
-                  className="form-label d-inline-flex align-items-center"
-                  htmlFor="search"
+                <form
+                  role="search"
+                  aria-label="Search resources"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setCurrentPage(1);
+                    setSelectedResourceId(null);
+                    resultsHeadingRef.current?.focus();
+                  }}
                 >
-                  <span>Open Search</span>
-                  <Tooltip text="Search is fuzzy and looks across organization name, services, counties served, and other key fields." />
-                </label>
+                  <label className="form-label d-inline-flex align-items-center" htmlFor="search">
+                    <span>Open Search</span>
+                    <Tooltip text="Search is fuzzy and looks across organization name, services, counties served, and other key fields." />
+                  </label>
 
-                <div className="pos-rel text-normal">
-                  <span className="sr-only" id="SearchInput">
-                    Search
-                  </span>
+                  <p id="search-help" className="sr-only">
+                    Search across organization name, services, counties served, and other key fields.
+                  </p>
 
-                  <div
-                    className="d-flex w-100"
-                    style={{
-                      alignItems: "stretch",
-                      flexWrap: "nowrap",
-                      minWidth: 0,
-                      position: "relative",
-                    }}
-                    onKeyDown={(e) => {
-                      const target = e.target as HTMLElement | null;
-                      const isInput = target?.id === "search";
-                      if (e.key === "Enter" && isInput) e.preventDefault();
-                      if (e.key === "Escape" && isInput && searchQuery) {
-                        e.preventDefault();
-                        onSearchChange("");
-                        (
-                          document.getElementById("search") as HTMLInputElement | null
-                        )?.focus();
-                      }
-                    }}
-                  >
-                    <input
-                      id="search"
-                      type="search"
-                      name="q"
-                      aria-labelledby="SearchInput"
-                      placeholder="Search"
-                      className="search-textfield font-normal"
-                      value={searchQuery}
-                      onChange={(e) => onSearchChange(e.target.value)}
+                  <div className="pos-rel text-normal">
+                    <div
+                      className="d-flex w-100"
                       style={{
-                        flex: "1 1 auto",
+                        alignItems: "stretch",
+                        flexWrap: "nowrap",
                         minWidth: 0,
-                        height: "44px",
-                        minHeight: "44px",
-                        paddingRight: searchQuery ? "104px" : "72px",
+                        position: "relative",
                       }}
-                    />
-
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        aria-label="Clear search"
-                        title="Clear search"
-                        onClick={() => {
+                      onKeyDown={(e) => {
+                        const target = e.target as HTMLElement | null;
+                        const isInput = target?.id === "search";
+                        if (e.key === "Escape" && isInput && searchQuery) {
+                          e.preventDefault();
                           onSearchChange("");
-                          (
-                            document.getElementById("search") as HTMLInputElement | null
-                          )?.focus();
-                        }}
-                        className="position-absolute bg-transparent border-0"
+                          (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                        }
+                      }}
+                    >
+                      <input
+                        id="search"
+                        type="search"
+                        name="q"
+                        aria-describedby="search-help"
+                        placeholder="Search"
+                        className="search-textfield font-normal"
+                        value={searchQuery}
+                        onChange={(e) => onSearchChange(e.target.value)}
                         style={{
-                          right: "44px",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          width: "44px",
+                          flex: "1 1 auto",
+                          minWidth: 0,
                           height: "44px",
+                          minHeight: "44px",
+                          paddingRight: searchQuery ? "104px" : "72px",
+                        }}
+                      />
+
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          aria-label="Clear search"
+                          title="Clear search"
+                          onClick={() => {
+                            onSearchChange("");
+                            (document.getElementById("search") as HTMLInputElement | null)?.focus();
+                          }}
+                          className="position-absolute bg-transparent border-0"
+                          style={{
+                            right: "44px",
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            width: "44px",
+                            height: "44px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              d="M5 5l10 10M15 5L5 15"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <span className="sr-only">Clear</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="submit"
+                        className="gsc-search-button bg-gray-600"
+                        aria-label="Apply search"
+                        style={{
+                          flex: "0 0 44px",
+                          height: "44px",
+                          width: "44px",
+                          minWidth: "44px",
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          cursor: "pointer",
                         }}
                       >
-                        <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
-                          <path
-                            d="M5 5l10 10M15 5L5 15"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                        <span className="sr-only">Clear</span>
+                        <span
+                          className="ca-gov-icon-search"
+                          aria-hidden="true"
+                          style={{ color: "#ffffff" }}
+                        />
+                        <span className="sr-only">Apply search</span>
                       </button>
-                    )}
-
-                    <button
-                      type="button"
-                      className="gsc-search-button bg-gray-600"
-                      aria-label="Search"
-                      onClick={() => {}}
-                      style={{
-                        flex: "0 0 44px",
-                        height: "44px",
-                        width: "44px",
-                        minWidth: "44px",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <span
-                        className="ca-gov-icon-search"
-                        aria-hidden="true"
-                        style={{ color: "#ffffff" }}
-                      />
-                      <span className="sr-only">Search</span>
-                    </button>
+                    </div>
                   </div>
-                </div>
+                </form>
               </div>
+
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
@@ -1319,15 +1307,26 @@ export default function ResourceFinder() {
                   </div>
                 </div>
               </div>
-            </div>  
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Results */}
-      <section className="md:mx-36" aria-label="Results">
+      <section className="md:mx-36" aria-labelledby="results-heading">
         <div className="row g-3 align-items-start align-items-md-end m-b-md">
-          <div className="col-12 col-lg-8">{renderResultsSummary()}</div>
+          <div className="col-12 col-lg-8">
+            <h2
+              id="results-heading"
+              ref={resultsHeadingRef}
+              tabIndex={-1}
+              className="sr-only"
+            >
+              Results
+            </h2>
+            <div aria-live="polite" aria-atomic="true">
+              {renderResultsSummary()}
+            </div>
+          </div>
 
           <div className="col-12 col-lg-4">
             <SingleSelect
@@ -1345,7 +1344,12 @@ export default function ResourceFinder() {
             />
 
             {locationError && (
-              <div className="text-danger mt-1" style={{ fontSize: "0.875rem" }}>
+              <div
+                className="text-danger mt-1"
+                style={{ fontSize: "0.875rem" }}
+                role="status"
+                aria-live="polite"
+              >
                 {locationError}
               </div>
             )}
@@ -1354,13 +1358,19 @@ export default function ResourceFinder() {
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
-            {/* ── Map column — translate="no" protects Mapbox's canvas DOM ── */}
             <div className="col-12 col-lg-8">
               <div className="card">
                 <div className="card-body p-0">
+                  <p id="map-help" className="sr-only">
+                    Map of resource locations. The full set of map results is also available in the
+                    results list to the right or below.
+                  </p>
                   <div
                     ref={mapContainerRef}
                     translate="no"
+                    role="region"
+                    aria-label="Map of resource locations"
+                    aria-describedby="map-help"
                     style={{
                       width: "100%",
                       height: "500px",
@@ -1372,16 +1382,18 @@ export default function ResourceFinder() {
               </div>
             </div>
 
-            {/* ── Side panel — wrapped in boundary so card text can translate
-                  without a crash remounting the map ── */}
             <div className="col-12 col-lg-4">
               <TranslateErrorBoundary>
-                <div className="card" aria-label="Results list">
+                <div className="card" aria-labelledby="map-results-heading">
                   <div
                     className="card-body p-0"
                     style={{ maxHeight: "500px", overflow: "auto" }}
                   >
-                    <div className="d-flex flex-column gap-3">
+                    <h3 id="map-results-heading" className="sr-only">
+                      Map results list
+                    </h3>
+
+                    <ul className="list-unstyled m-0 p-0">
                       {sidePanelResources.map((r) => {
                         const servicesToShow =
                           audience === "Resident" ? r.servicesLabels : r.orgServicesLabels;
@@ -1395,7 +1407,7 @@ export default function ResourceFinder() {
                             : r.freeLowCostOrganizations;
 
                         return (
-                          <div key={r.id}>
+                          <li key={r.id} className="m-b-md">
                             <ResourceCard
                               resource={r}
                               servicesToShow={servicesToShow}
@@ -1408,6 +1420,7 @@ export default function ResourceFinder() {
                                 <button
                                   type="button"
                                   className="btn btn-outline-primary w-100"
+                                  aria-label={`Zoom to ${r.name} on the map`}
                                   onClick={() => {
                                     setSelectedResourceId(r.id);
                                     flyToResourceId(r.id);
@@ -1417,16 +1430,17 @@ export default function ResourceFinder() {
                                 </button>
                               </div>
                             )}
-                          </div>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ul>
 
                     {selectedResourceId && (
                       <div>
                         <button
                           type="button"
                           className="btn btn-outline-primary w-100"
+                          aria-label="Back to all results and zoom out on the map"
                           onClick={() => {
                             setSelectedResourceId(null);
                             flyToCountyOrCalifornia(selectedCounty);
@@ -1442,7 +1456,6 @@ export default function ResourceFinder() {
             </div>
           </div>
         ) : (
-          // ── List view — wrapped in boundary so card text can translate ──
           <TranslateErrorBoundary>
             <>
               <div className="row">
@@ -1471,16 +1484,16 @@ export default function ResourceFinder() {
                 })}
               </div>
 
-            <Pagination
-              currentPage={safePage}
-              totalPages={totalPages}
-              onPageChange={onPageChange}
-              perPage={perPage}
-              onPerPageChange={(val) => {
-                setPerPage(val);
-                setCurrentPage(1);
-              }}
-            />
+              <Pagination
+                currentPage={safePage}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+                perPage={perPage}
+                onPerPageChange={(val) => {
+                  setPerPage(val);
+                  setCurrentPage(1);
+                }}
+              />
             </>
           </TranslateErrorBoundary>
         )}
