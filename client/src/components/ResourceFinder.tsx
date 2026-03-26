@@ -986,7 +986,7 @@ export default function ResourceFinder() {
 
   return (
     <div className="container-fluid">
-      <header className="iframe-styles m-y-lg md:mx-32 lg:mx-64" style={{ marginTop: 0 }}>
+      <header className="iframe-styles md:mx-32 lg:mx-64" style={{ marginTop: 0 }}>
         <div
           className="text-white py-4 px-4"
           style={{

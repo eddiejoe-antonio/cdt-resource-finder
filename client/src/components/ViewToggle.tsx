@@ -93,8 +93,11 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, l
       {/* Sliding thumb */}
       <div
         aria-hidden="true"
-        className="absolute left-1 top-1 bottom-1 w-1/2 rounded-full bg-[#066b99]"
-        style={thumbStyle}
+        className="absolute left-1 top-1 bottom-1 rounded-full bg-[#066b99]"
+        style={{
+          width: "calc(50% - 0.25rem)",
+          ...thumbStyle,
+        }}
       />
 
       <button
