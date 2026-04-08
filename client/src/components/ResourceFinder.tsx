@@ -1236,6 +1236,7 @@ export default function ResourceFinder() {
                   <p id="search-help" className="sr-only">
                     Search across organization name, services, counties served, and other key fields.
                   </p>
+                  <style>{`#search:focus-visible{outline:2px solid #1a6faf!important;outline-offset:0!important;box-shadow:none!important;border-color:#1a6faf!important}`}</style>
 
                   <div className="pos-rel text-normal">
                     <div
@@ -1271,6 +1272,8 @@ export default function ResourceFinder() {
                           height: "44px",
                           minHeight: "44px",
                           paddingRight: searchQuery ? "104px" : "72px",
+                          border: "2px solid #595959",
+                          borderRadius: "6px",
                         }}
                       />
 

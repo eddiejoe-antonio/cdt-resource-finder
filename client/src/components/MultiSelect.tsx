@@ -245,6 +245,7 @@ export function MultiSelect<T extends string>({
             minHeight: 44,
             fontSize: '1rem',
             border: '2px solid #595959',
+            borderRadius: '6px',
             outline: 'none',
           }}
         >
