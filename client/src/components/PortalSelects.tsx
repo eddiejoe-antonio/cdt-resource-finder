@@ -354,7 +354,11 @@ export function PortalMultiSelect<T extends string>({
                     onToggle(opt.value);
                   }
                 }}
-                className="h-5 w-5 mt-0.5 border border-gray-300 accent-gray-700"
+                className="h-5 w-5 mt-0.5"
+                style={{
+                  border: '2px solid #595959',
+                  accentColor: '#0d4cd3',
+                }}
               />
               <span className="text-normal" style={{ fontSize: "1rem" }}>
                 {opt.label}
