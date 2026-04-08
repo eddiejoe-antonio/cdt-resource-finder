@@ -658,7 +658,11 @@ export default function ResourceFinder() {
     canvas.setAttribute("aria-hidden", "true");
 
     mapRef.current = map;
-    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), "top-right");
+    // 2.4.3 Focus Order: Mapbox injects © attribution after the logo link in the DOM
+    // but the logo link appears first visually. We remove the default attribution control
+    // and add a compact one so we can then fix the tab order via tabIndex after load.
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
 
     const onLoad = () => {
       if (!map.getSource(MAP_SOURCE_ID)) {
@@ -687,8 +691,8 @@ export default function ResourceFinder() {
               0,
               6,
             ],
-            "circle-color": "#f08024",
-            "circle-stroke-width": 0.25,
+            "circle-color": "#b94f00",
+            "circle-stroke-width": 1.5,
             "circle-stroke-color": "#fff",
           },
         });
@@ -697,6 +701,18 @@ export default function ResourceFinder() {
       const c = selectedCountyRef.current;
       if (c) flyToCounty(c as County, { immediate: true });
       else flyToCalifornia({ immediate: true });
+
+      // 2.4.3: The Mapbox logo <a> and the © attribution <a> links are sibling
+      // controls. The logo appears visually first (left) but the © links are first
+      // in DOM order. Setting tabindex="1" on the logo and tabindex="2" on © links
+      // forces keyboard focus to visit them in visual left-to-right order.
+      const logoEl = map.getContainer().querySelector<HTMLElement>(".mapboxgl-ctrl-logo");
+      if (logoEl) logoEl.setAttribute("tabindex", "1");
+
+      const attrLinks = Array.from(
+        map.getContainer().querySelectorAll<HTMLElement>(".mapboxgl-ctrl-attrib a")
+      );
+      attrLinks.forEach((a) => a.setAttribute("tabindex", "2"));
 
       prevWantedIdsRef.current = new Set(allIdsRef.current);
 
@@ -1097,6 +1113,7 @@ export default function ResourceFinder() {
                         checked={audience === "Resident"}
                         onChange={() => onAudienceChange("Resident")}
                         onKeyDown={(e) => { if (e.key === "Enter") onAudienceChange("Resident"); }}
+                        style={{ border: "2px solid #595959" }}
                       />
                       <label className="form-check-label" htmlFor="audienceResident">
                         A Resident
@@ -1111,6 +1128,7 @@ export default function ResourceFinder() {
                         checked={audience === "Organization"}
                         onChange={() => onAudienceChange("Organization")}
                         onKeyDown={(e) => { if (e.key === "Enter") onAudienceChange("Organization"); }}
+                        style={{ border: "2px solid #595959" }}
                       />
                       <label className="form-check-label" htmlFor="audienceOrganization">
                         An Organization

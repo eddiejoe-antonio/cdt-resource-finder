@@ -155,6 +155,7 @@ export function PortalSingleSelect<T extends string>({
 
   return (
     <div>
+      <style>{`#${id}:focus-visible{outline:2px solid #1a6faf!important;outline-offset:0!important;box-shadow:none!important;border-color:#1a6faf!important}`}</style>
       <label id={`${id}-label`} className="form-label" htmlFor={id}>
         <span className="d-inline-flex align-items-center">{labelNode ?? label}</span>
       </label>
@@ -174,7 +175,7 @@ export function PortalSingleSelect<T extends string>({
           }
           if (e.key === "Escape") setOpen(false);
         }}
-        style={{ minHeight: 44, fontSize: "1rem" }}
+        style={{ minHeight: 44, fontSize: "1rem", border: "2px solid #595959" }}
       >
         <span className={!value ? "text-muted" : ""} style={{ fontSize: "1rem" }}>
           {!value ? placeholder : currentLabel}
@@ -372,6 +373,7 @@ export function PortalMultiSelect<T extends string>({
 
   return (
     <div>
+      <style>{`#${id}:focus-visible{outline:2px solid #1a6faf!important;outline-offset:0!important;box-shadow:none!important;border-color:#1a6faf!important}`}</style>
       <label id={`${id}-label`} className="form-label" htmlFor={id}>
         <span className="d-inline-flex align-items-center">{labelNode ?? label}</span>
       </label>
@@ -391,7 +393,7 @@ export function PortalMultiSelect<T extends string>({
           }
           if (e.key === "Escape") setOpen(false);
         }}
-        style={{ minHeight: 44, fontSize: "1rem" }}
+        style={{ minHeight: 44, fontSize: "1rem", border: "2px solid #595959" }}
       >
         <span className={selectedCount === 0 ? "text-muted" : ""} style={{ fontSize: "1rem" }}>
           {buttonText}

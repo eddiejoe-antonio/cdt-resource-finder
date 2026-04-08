@@ -337,8 +337,25 @@ export function SingleSelect<T extends string>({
   ) : null;
 
   // ── Render ──────────────────────────────────────────────────────────────
+  // Shared border + focus-outline style that meets 3:1 non-text contrast (1.4.11).
+  // Bootstrap's default #DEE2E6 border on #FAFAFA is only 1.65:1; #595959 is ~7:1.
+  // Bootstrap's default #86B7FE focus ring on white is 1.25:1; we override with
+  // a solid 2px #1a6faf ring which is ~4.6:1 on white.
+  const inputOverrideStyle: React.CSSProperties = {
+    border: "2px solid #595959",
+  };
+  const focusStyle = `
+    #${id}:focus, #${id}:focus-visible {
+      outline: 2px solid #1a6faf !important;
+      outline-offset: 0px !important;
+      box-shadow: none !important;
+      border-color: #1a6faf !important;
+    }
+  `;
+
   return (
     <div className="w-full">
+      {id && <style>{focusStyle}</style>}
       {(label || labelNode) && (
         <label className="form-label" htmlFor={id}>
           {labelNode || label}
@@ -347,6 +364,18 @@ export function SingleSelect<T extends string>({
 
       {searchable ? (
         <div className="position-relative" ref={containerRef}>
+          {/* aria-live region announces result count to screen readers (4.1.2) */}
+          <div
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {open && filteredOptions.length > 0
+              ? `${filteredOptions.length} option${filteredOptions.length === 1 ? "" : "s"} available`
+              : open && filteredOptions.length === 0
+              ? "No options match"
+              : ""}
+          </div>
           <input
             ref={inputRef}
             id={id}
@@ -367,6 +396,7 @@ export function SingleSelect<T extends string>({
               minHeight: 44,
               fontSize: "1rem",
               paddingRight: showClear ? "88px" : "44px",
+              ...inputOverrideStyle,
             }}
             onChange={handleInputChange}
             onFocus={handleInputFocus}
@@ -427,6 +457,7 @@ export function SingleSelect<T extends string>({
               minHeight: 44,
               fontSize: "1rem",
               paddingRight: showClear ? "88px" : "44px",
+              ...inputOverrideStyle,
             }}
           >
             <span className={!value ? "text-muted" : ""} style={{ fontSize: "1rem" }}>

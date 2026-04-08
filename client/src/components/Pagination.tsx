@@ -64,6 +64,7 @@ export default function Pagination({
         {/* ✅ Right third: Results per page (right aligned on desktop) */}
         <div className="col-12 col-md-4">
           <div className="d-flex align-items-center gap-2 justify-content-start justify-content-md-end">
+            <style>{`#per-page-select:focus-visible{outline:2px solid #1a6faf!important;outline-offset:0!important;box-shadow:none!important;border-color:#1a6faf!important}`}</style>
             <label htmlFor="per-page-select" className="m-0">
               Results per page:
             </label>
@@ -71,8 +72,7 @@ export default function Pagination({
             <select
               id="per-page-select"
               className="form-select"
-              // ✅ wide enough so label doesn't get cramped
-              style={{ width: 180, maxWidth: "100%" }}
+              style={{ width: 180, maxWidth: "100%", border: "2px solid #595959" }}
               value={perPage}
               onChange={(e) =>
                 onPerPageChange(

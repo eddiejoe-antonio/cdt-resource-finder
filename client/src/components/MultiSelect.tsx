@@ -119,6 +119,14 @@ export function MultiSelect<T extends string>({
   const labelId = id ? `${id}-label` : undefined;
   const menuId = id ? `${id}-menu` : undefined;
 
+  const focusStyle = id ? `
+    #${id}:focus-visible {
+      outline: 2px solid #1a6faf !important;
+      outline-offset: 0px !important;
+      box-shadow: none !important;
+    }
+  ` : "";
+
   const dropdown = open ? (
     <div
       ref={menuRef}
@@ -206,6 +214,7 @@ export function MultiSelect<T extends string>({
 
   return (
     <div className="w-full">
+      {focusStyle && <style>{focusStyle}</style>}
       {(label || labelNode) && (
         <label className="form-label" htmlFor={id} id={labelId}>
           {labelNode || label}
@@ -232,7 +241,12 @@ export function MultiSelect<T extends string>({
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
-          style={{ minHeight: 44, fontSize: '1rem' }}
+          style={{
+            minHeight: 44,
+            fontSize: '1rem',
+            border: '2px solid #595959',
+            outline: 'none',
+          }}
         >
           <span
             className={selected.length === 0 ? 'text-muted' : ''}
