@@ -75,6 +75,7 @@ export default function TranslateDropdown() {
 
   return (
     <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+      <style>{`#translate-select:focus-visible{outline:2px solid #1a6faf!important;outline-offset:0!important;box-shadow:none!important;border-color:#1a6faf!important}`}</style>
       <span
         className="ca-gov-icon-language"
         aria-hidden="true"
@@ -86,7 +87,11 @@ export default function TranslateDropdown() {
       <select
         id="translate-select"
         className="form-select"
-        style={{ width: 240, maxWidth: "100%" }}
+        style={{
+          width: "100%",
+          maxWidth: 240,
+          border: "2px solid #595959",
+        }}
         value={selected}
         disabled={!ready}
         aria-disabled={!ready}

@@ -185,10 +185,56 @@ export function SingleSelect<T extends string>({
     }
   }
 
+  // ── Focus first/selected option when non-searchable menu opens ────────
+  useEffect(() => {
+    if (open && !searchable && menuRef.current) {
+      const t = window.setTimeout(() => {
+        const opts = Array.from(
+          menuRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []
+        );
+        const selectedIdx = opts.findIndex(
+          (el) => el.getAttribute("aria-selected") === "true"
+        );
+        (opts[selectedIdx >= 0 ? selectedIdx : 0] as HTMLElement | undefined)?.focus();
+      }, 0);
+      return () => window.clearTimeout(t);
+    }
+  }, [open, searchable]);
+
+  // ── Keyboard navigation on the non-searchable listbox ──────────────────
+  function onListboxKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (searchable) return; // searchable handles its own keys
+    const opts = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []
+    );
+    const idx = opts.findIndex((el) => el === document.activeElement);
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeDropdown();
+      buttonRef.current?.focus();
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      opts[Math.min(opts.length - 1, idx + 1)]?.focus();
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      opts[Math.max(0, idx - 1)]?.focus();
+      return;
+    }
+    if (e.key === "Tab") {
+      // Close but don't steal focus — let Tab continue naturally
+      closeDropdown();
+    }
+  }
+
   // ── Portal dropdown (shared by both variants) ───────────────────────────
   const portalDropdown = open ? createPortal(
     <>
-      {/* Invisible full-screen dismiss layer */}
+      {/* Invisible full-screen dismiss layer (mouse only, aria-hidden) */}
       <div
         style={{ position: "fixed", inset: 0, zIndex: 9998 }}
         onClick={closeDropdown}
@@ -209,6 +255,7 @@ export function SingleSelect<T extends string>({
           maxHeight: 320,
           overflowY: "auto",
         }}
+        onKeyDown={onListboxKeyDown}
       >
         {searchable && filteredOptions.length === 0 ? (
           <div className="px-3 py-2 text-muted" style={{ fontSize: "1rem" }}>
@@ -224,10 +271,20 @@ export function SingleSelect<T extends string>({
                 id={`${listboxId}-opt-${index}`}
                 role="option"
                 aria-selected={isSelected}
+                // Non-searchable: each option is focusable so keyboard can reach it
+                tabIndex={searchable ? -1 : 0}
                 onClick={() => {
                   if (searchable) {
                     handleOptionClick(option);
                   } else {
+                    onChange(option.value);
+                    setOpen(false);
+                    buttonRef.current?.focus();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (!searchable && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
                     onChange(option.value);
                     setOpen(false);
                     buttonRef.current?.focus();
@@ -244,6 +301,17 @@ export function SingleSelect<T extends string>({
                     ? "#f3f4f6"
                     : "transparent",
                   color: isHighlighted ? "#fff" : "inherit",
+                  outline: "none",
+                }}
+                // Show a visible focus ring for keyboard users
+                onFocus={(e) => {
+                  if (!searchable) {
+                    (e.currentTarget as HTMLElement).style.boxShadow =
+                      "inset 0 0 0 2px #1a6faf";
+                  }
+                }}
+                onBlur={(e) => {
+                  (e.currentTarget as HTMLElement).style.boxShadow = "";
                 }}
               >
                 <span
@@ -269,8 +337,25 @@ export function SingleSelect<T extends string>({
   ) : null;
 
   // ── Render ──────────────────────────────────────────────────────────────
+  // Shared border + focus-outline style that meets 3:1 non-text contrast (1.4.11).
+  // Bootstrap's default #DEE2E6 border on #FAFAFA is only 1.65:1; #595959 is ~7:1.
+  // Bootstrap's default #86B7FE focus ring on white is 1.25:1; we override with
+  // a solid 2px #1a6faf ring which is ~4.6:1 on white.
+  const inputOverrideStyle: React.CSSProperties = {
+    border: "2px solid #595959",
+  };
+  const focusStyle = `
+    #${id}:focus, #${id}:focus-visible {
+      outline: 2px solid #1a6faf !important;
+      outline-offset: 0px !important;
+      box-shadow: none !important;
+      border-color: #1a6faf !important;
+    }
+  `;
+
   return (
     <div className="w-full">
+      {id && <style>{focusStyle}</style>}
       {(label || labelNode) && (
         <label className="form-label" htmlFor={id}>
           {labelNode || label}
@@ -279,6 +364,18 @@ export function SingleSelect<T extends string>({
 
       {searchable ? (
         <div className="position-relative" ref={containerRef}>
+          {/* aria-live region announces result count to screen readers (4.1.2) */}
+          <div
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {open && filteredOptions.length > 0
+              ? `${filteredOptions.length} option${filteredOptions.length === 1 ? "" : "s"} available`
+              : open && filteredOptions.length === 0
+              ? "No options match"
+              : ""}
+          </div>
           <input
             ref={inputRef}
             id={id}
@@ -299,6 +396,7 @@ export function SingleSelect<T extends string>({
               minHeight: 44,
               fontSize: "1rem",
               paddingRight: showClear ? "88px" : "44px",
+              ...inputOverrideStyle,
             }}
             onChange={handleInputChange}
             onFocus={handleInputFocus}
@@ -359,6 +457,7 @@ export function SingleSelect<T extends string>({
               minHeight: 44,
               fontSize: "1rem",
               paddingRight: showClear ? "88px" : "44px",
+              ...inputOverrideStyle,
             }}
           >
             <span className={!value ? "text-muted" : ""} style={{ fontSize: "1rem" }}>

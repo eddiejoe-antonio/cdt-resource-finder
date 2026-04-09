@@ -638,10 +638,31 @@ export default function ResourceFinder() {
       style: "mapbox://styles/mapbox/streets-v11",
       center: [-119.4179, 36.7783],
       zoom: 5,
+      // 2.5.1 Pointer Gestures: disable multi-point-only gestures.
+      // cooperativeGestures requires ctrl+scroll on desktop and two fingers on touch,
+      // but all zoom/pan actions remain available via single-pointer controls
+      // (zoom buttons, click-drag, +/- keys).
+      cooperativeGestures: true,
+      // Rotate requires two-finger twist; disable it so no action requires a
+      // path-based or multi-point gesture without a single-pointer alternative.
+      dragRotate: false,
+      touchPitch: false,
+      touchZoomRotate: true, // pinch-to-zoom kept but + / - keyboard / buttons cover it
     });
 
+    // 2.1.1 Keyboard: prevent the map canvas from being a keyboard focus trap.
+    // The canvas is not keyboard-operable itself; all map interactions are
+    // reachable via the side-panel list and zoom control buttons.
+    const canvas = map.getCanvas();
+    canvas.setAttribute("tabindex", "-1");
+    canvas.setAttribute("aria-hidden", "true");
+
     mapRef.current = map;
-    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), "top-right");
+    // 2.4.3 Focus Order: Mapbox injects © attribution after the logo link in the DOM
+    // but the logo link appears first visually. We remove the default attribution control
+    // and add a compact one so we can then fix the tab order via tabIndex after load.
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
 
     const onLoad = () => {
       if (!map.getSource(MAP_SOURCE_ID)) {
@@ -670,8 +691,8 @@ export default function ResourceFinder() {
               0,
               6,
             ],
-            "circle-color": "#f08024",
-            "circle-stroke-width": 0.25,
+            "circle-color": "#b94f00",
+            "circle-stroke-width": 1.5,
             "circle-stroke-color": "#fff",
           },
         });
@@ -680,6 +701,18 @@ export default function ResourceFinder() {
       const c = selectedCountyRef.current;
       if (c) flyToCounty(c as County, { immediate: true });
       else flyToCalifornia({ immediate: true });
+
+      // 2.4.3: The Mapbox logo <a> and the © attribution <a> links are sibling
+      // controls. The logo appears visually first (left) but the © links are first
+      // in DOM order. Setting tabindex="1" on the logo and tabindex="2" on © links
+      // forces keyboard focus to visit them in visual left-to-right order.
+      const logoEl = map.getContainer().querySelector<HTMLElement>(".mapboxgl-ctrl-logo");
+      if (logoEl) logoEl.setAttribute("tabindex", "1");
+
+      const attrLinks = Array.from(
+        map.getContainer().querySelectorAll<HTMLElement>(".mapboxgl-ctrl-attrib a")
+      );
+      attrLinks.forEach((a) => a.setAttribute("tabindex", "2"));
 
       prevWantedIdsRef.current = new Set(allIdsRef.current);
 
@@ -1056,36 +1089,51 @@ export default function ResourceFinder() {
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
               <div className="col-12 col-lg-6">
-                <label className="form-label d-inline-flex align-items-center">
-                  <span>I am...</span>
-                  <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
-                </label>
-                <div className="d-flex gap-4">
-                  <div className="form-check m-t-sm">
-                    <input
-                      className="form-check-input"
-                      type="radio"
-                      name="audience"
-                      id="audienceResident"
-                      checked={audience === "Resident"}
-                      onChange={() => onAudienceChange("Resident")}
-                    />
-                    <label className="form-check-label" htmlFor="audienceResident">
-                      A Resident
-                    </label>
-                  </div>
-                  <div className="form-check m-t-sm">
-                    <input
-                      className="form-check-input"
-                      type="radio"
-                      name="audience"
-                      id="audienceOrganization"
-                      checked={audience === "Organization"}
-                      onChange={() => onAudienceChange("Organization")}
-                    />
-                    <label className="form-check-label" htmlFor="audienceOrganization">
-                      An Organization
-                    </label>
+                {/*
+                  Each radio has a unique `name` so the browser never forms a
+                  group — roving tabindex never applies and both stay tabbable.
+                  role="radiogroup" + aria-labelledby give screen readers the
+                  group semantics without the browser's tab-management side-effect.
+                */}
+                <div role="radiogroup" aria-labelledby="audience-legend">
+                  <label
+                    id="audience-legend"
+                    className="form-label d-inline-flex align-items-center"
+                  >
+                    <span>I am...</span>
+                    <Tooltip text="Choose Resident to see services for individuals. Choose Organization to see services for organizations." />
+                  </label>
+                  <div className="d-flex gap-4">
+                    <div className="form-check m-t-sm">
+                      <input
+                        className="form-check-input"
+                        type="radio"
+                        name="audience-resident"
+                        id="audienceResident"
+                        checked={audience === "Resident"}
+                        onChange={() => onAudienceChange("Resident")}
+                        onKeyDown={(e) => { if (e.key === "Enter") onAudienceChange("Resident"); }}
+                        style={{ border: "2px solid #595959" }}
+                      />
+                      <label className="form-check-label" htmlFor="audienceResident">
+                        A Resident
+                      </label>
+                    </div>
+                    <div className="form-check m-t-sm">
+                      <input
+                        className="form-check-input"
+                        type="radio"
+                        name="audience-organization"
+                        id="audienceOrganization"
+                        checked={audience === "Organization"}
+                        onChange={() => onAudienceChange("Organization")}
+                        onKeyDown={(e) => { if (e.key === "Enter") onAudienceChange("Organization"); }}
+                        style={{ border: "2px solid #595959" }}
+                      />
+                      <label className="form-check-label" htmlFor="audienceOrganization">
+                        An Organization
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1188,6 +1236,7 @@ export default function ResourceFinder() {
                   <p id="search-help" className="sr-only">
                     Search across organization name, services, counties served, and other key fields.
                   </p>
+                  <style>{`#search:focus-visible{outline:2px solid #1a6faf!important;outline-offset:0!important;box-shadow:none!important;border-color:#1a6faf!important}`}</style>
 
                   <div className="pos-rel text-normal">
                     <div
@@ -1223,6 +1272,8 @@ export default function ResourceFinder() {
                           height: "44px",
                           minHeight: "44px",
                           paddingRight: searchQuery ? "104px" : "72px",
+                          border: "2px solid #595959",
+                          borderRadius: "6px 0 0 6px",
                         }}
                       />
 
@@ -1358,31 +1409,15 @@ export default function ResourceFinder() {
 
         {viewMode === "map" ? (
           <div className="row g-3 align-items-start">
-            <div className="col-12 col-lg-8">
-              <div className="card">
-                <div className="card-body p-0">
-                  <p id="map-help" className="sr-only">
-                    Map of resource locations. The full set of map results is also available in the
-                    results list to the right or below.
-                  </p>
-                  <div
-                    ref={mapContainerRef}
-                    translate="no"
-                    role="region"
-                    aria-label="Map of resource locations"
-                    aria-describedby="map-help"
-                    style={{
-                      width: "100%",
-                      height: "500px",
-                      minHeight: "420px",
-                      borderRadius: "4px",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="col-12 col-lg-4">
+            {/*
+              DOM ORDER: side panel first so keyboard/screen-reader users reach the
+              results list before the map canvas (WCAG 2.4.3 Focus Order).
+              Visual order is restored with CSS `order` (2.1.1 + 2.4.3).
+            */}
+            <div
+              className="col-12 col-lg-4"
+              style={{ order: 2 }}
+            >
               <TranslateErrorBoundary>
                 <div className="card" aria-labelledby="map-results-heading">
                   <div
@@ -1453,6 +1488,41 @@ export default function ResourceFinder() {
                   </div>
                 </div>
               </TranslateErrorBoundary>
+            </div>
+
+            <div
+              className="col-12 col-lg-8"
+              style={{ order: 1 }}
+            >
+              <div className="card">
+                <div className="card-body p-0">
+                  {/* Skip link: lets keyboard users bypass the map canvas (2.1.1) */}
+                  <a
+                    href="#map-results-heading"
+                    className="sr-only sr-only-focusable"
+                    style={{ position: "absolute", zIndex: 1 }}
+                  >
+                    Skip map, go to results list
+                  </a>
+                  <p id="map-help" className="sr-only">
+                    Interactive map of resource locations. Use the results list to browse
+                    resources without a mouse. All map points are also listed there.
+                  </p>
+                  <div
+                    ref={mapContainerRef}
+                    translate="no"
+                    role="region"
+                    aria-label="Map of resource locations"
+                    aria-describedby="map-help"
+                    style={{
+                      width: "100%",
+                      height: "500px",
+                      minHeight: "420px",
+                      borderRadius: "4px",
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         ) : (
