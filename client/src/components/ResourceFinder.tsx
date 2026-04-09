@@ -164,7 +164,7 @@ export default function ResourceFinder() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
-  const [viewMode, setViewMode] = useState<ViewMode>("map");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const [audience, setAudience] = useState<Audience>("Resident");
   const [searchQuery, setSearchQuery] = useState("");
