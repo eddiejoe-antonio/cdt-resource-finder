@@ -1273,7 +1273,7 @@ export default function ResourceFinder() {
                           minHeight: "44px",
                           paddingRight: searchQuery ? "104px" : "72px",
                           border: "2px solid #595959",
-                          borderRadius: "6px",
+                          borderRadius: "6px 0 0 6px",
                         }}
                       />
 
