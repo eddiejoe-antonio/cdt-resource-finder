@@ -3174,5 +3174,165 @@
   "7997 California Avenue, nan, Fair Oaks, CA, 95628": {
     "lat": 38.642098,
     "long": -121.268518
+  },
+  "195 Bay Shore Avenue, nan, Long Beach, CA, 90803": {
+    "lat": 33.758046,
+    "long": -118.130545
+  },
+  "130 Cherry Avenue, nan, Long Beach, CA, 90802": {
+    "lat": 33.766088,
+    "long": -118.167067
+  },
+  "101 E 28th Street, nan, Long Beach, CA, 90806": {
+    "lat": 33.809584,
+    "long": -118.192189
+  },
+  "1950 Lemon Avenue, nan, Long Beach, CA, 90806": {
+    "lat": 33.791992,
+    "long": -118.177852
+  },
+  "1435 Orizaba Avenue, nan, Long Beach, CA, 90804": {
+    "lat": 33.785017,
+    "long": -118.15735
+  },
+  "200 W Broadway, nan, Long Beach, CA, 90802": {
+    "lat": 33.769003,
+    "long": -118.194426
+  },
+  "1545 W 31st Street, nan, Long Beach, CA, 90810": {
+    "lat": 33.814785,
+    "long": -118.212471
+  },
+  "185 E 3rd Street, nan, Long Beach, CA, 90802": {
+    "lat": 33.770508,
+    "long": -118.190815
+  },
+  "1321 E Anaheim Street, nan, Long Beach, CA, 90813": {
+    "lat": 33.783493,
+    "long": -118.174641
+  },
+  "1550 Martin Luther King Jr Avenue, nan, Long Beach, CA, 90813": {
+    "lat": 33.786701,
+    "long": -118.180359
+  },
+  "1836 E 3rd Street, nan, Long Beach, CA, 90802": {
+    "lat": 33.768837,
+    "long": -118.168524
+  },
+  "2201 E Anaheim St, nan, Long Beach, CA, 90804": {
+    "lat": 33.78284,
+    "long": -118.165319
+  },
+  "1150 E 4th Street, nan, Long Beach, CA, 90802": {
+    "lat": 33.771217,
+    "long": -118.17696
+  },
+  "1595 W Willow Street, nan, Long Beach, CA, 90810": {
+    "lat": 33.804649,
+    "long": -118.214061
+  },
+  "100 W. Broadway, nan, Long Beach, CA, 90802": {
+    "lat": 33.769012,
+    "long": -118.192877
+  },
+  "1401 E Anaheim Street, nan, Long Beach, CA, 90813": {
+    "lat": 33.782822,
+    "long": -118.173591
+  },
+  "2900 N Studebaker Road, nan, Long Beach, CA, 90815": {
+    "lat": 33.808897,
+    "long": -118.098635
+  },
+  "3301 E 65th Street, nan, Long Beach, CA, 90805": {
+    "lat": 33.872502,
+    "long": -118.154642
+  },
+  "401 Golden Avenue, nan, Long Beach, CA, 90802": {
+    "lat": 33.771751,
+    "long": -118.202361
+  },
+  "3457 Stanbridge Avenue, nan, Long Beach, CA, 90808": {
+    "lat": 33.820559,
+    "long": -118.128798
+  },
+  "560 E Hill Street, nan, Long Beach, CA, 90806": {
+    "lat": 33.796909,
+    "long": -118.185789
+  },
+  "4036 E Anaheim Street, nan, Long Beach, CA, 90804": {
+    "lat": 33.782387,
+    "long": -118.14504
+  },
+  "5614 E Britton Drive, nan, Long Beach, CA, 90815": {
+    "lat": 33.793337,
+    "long": -118.122563
+  },
+  "5431 E Ocean Boulevard, nan, Long Beach, CA, 90803": {
+    "lat": 33.753295,
+    "long": -118.131478
+  },
+  "4520 E 23rd Street, nan, Long Beach, CA, 90815": {
+    "lat": 33.799507,
+    "long": -118.139879
+  },
+  "4600 Long Beach Boulevard, nan, Long Beach, CA, 90805": {
+    "lat": 33.842617,
+    "long": -118.188484
+  },
+  "4055 North Bellflower Boulevard, nan, Long Beach, CA, 90808": {
+    "lat": 33.831853,
+    "long": -118.125523
+  },
+  "3680 Atlantic Avenue, nan, Long Beach, CA, 90807": {
+    "lat": 33.824014,
+    "long": -118.184763
+  },
+  "5620 E Atherton Street, nan, Long Beach, CA, 90815": {
+    "lat": 33.788424,
+    "long": -118.122157
+  },
+  "4900 E 7th Street, nan, Long Beach, CA, 90804": {
+    "lat": 33.774522,
+    "long": -118.132854
+  },
+  "6255 De Forest Avenue, nan, Long Beach, CA, 90805": {
+    "lat": 33.869039,
+    "long": -118.191529
+  },
+  "5870 Atlantic Avenue, nan, Long Beach, CA, 90805": {
+    "lat": 33.86139,
+    "long": -118.184459
+  },
+  "6301 Myrtle Avenue, nan, Long Beach, CA, 90805": {
+    "lat": 33.869692,
+    "long": -118.183461
+  },
+  "951 Maine Avenue, nan, Long Beach, CA, 90813": {
+    "lat": 33.778542,
+    "long": -118.20165
+  },
+  "7550 E Spring Street, nan, Long Beach, CA, 90815": {
+    "lat": 33.809501,
+    "long": -118.08686
+  },
+  "W Ocean Boulevard & Pacific Avenue, nan, Long Beach, CA, 90802": {
+    "lat": 33.767166,
+    "long": -118.193735
+  },
+  "201 N Lassen St, nan, Willows, CA, 95988-2704": {
+    "lat": 39.521972,
+    "long": -122.20029
+  },
+  "2455 West Capital Ave, 106, West Sacramento, CA, 95691": {
+    "lat": 38.578731,
+    "long": -121.543726
+  },
+  "470 Fifth Street, nan, Hollister, CA, 95023": {
+    "lat": 36.851779,
+    "long": -121.405101
+  },
+  "4357 Gage Avenue, nan, Bell, CA, 90201": {
+    "lat": 33.978449,
+    "long": -118.189894
   }
 }

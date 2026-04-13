@@ -1065,6 +1065,7 @@ export default function ResourceFinder() {
               href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-survey/"
               className="btn btn-outline-primary"
               target="_blank"
+              rel="noopener noreferrer"
             >
               Add a Resource
             </a>
@@ -1072,6 +1073,7 @@ export default function ResourceFinder() {
               href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-finder/update-resource/"
               className="btn btn-outline-primary"
               target="_blank"
+              rel="noopener noreferrer"
             >
               Update a Resource
             </a>
