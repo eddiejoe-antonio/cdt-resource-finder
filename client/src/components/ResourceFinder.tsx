@@ -1571,6 +1571,18 @@ export default function ResourceFinder() {
             </>
           </TranslateErrorBoundary>
         )}
+        {/* Disclaimer */}
+        <p
+          className="m-t-sm px-32"
+        >
+          The California Department of Technology (CDT) has developed this Digital Equity Resource
+          Finder in collaboration with digital equity stakeholders and partners. It includes
+          information that has been voluntarily submitted by entities that provide digital equity
+          programs and services to connect California residents to resources. CDT refreshed the data
+          for this Finder in Q1 2026. Organizations providing digital equity services in California
+          can add or edit resources at any time. Please send questions to{" "}
+          <a href="mailto:DEResourceFinder@state.ca.gov">DEResourceFinder@state.ca.gov</a>.
+        </p>
       </section>
     </div>
   );
