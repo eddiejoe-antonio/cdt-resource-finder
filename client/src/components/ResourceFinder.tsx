@@ -1054,12 +1054,12 @@ export default function ResourceFinder() {
           </div>
         </div>
 
-        <p className="m-t-md px-4">
+        <p className="m-t-md md:px-4 px-1">
           Welcome to the California Digital Equity Resource Finder – a tool designed to assist
           residents and organizations to find digital inclusion programs and services in their
           communities. The Resource Finder was updated in March 2026.
         </p>
-        <p className="m-t-sm px-4">
+        <p className="m-t-sm">
           <span style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             <a
               href="https://broadbandforall.cdt.ca.gov/digital-equity-resource-survey/"
@@ -1573,7 +1573,7 @@ export default function ResourceFinder() {
         )}
         {/* Disclaimer */}
         <p
-          className="m-t-sm px-32"
+          className="m-t-sm small px-1 md:px-0"
         >
           The California Department of Technology (CDT) has developed this Digital Equity Resource
           Finder in collaboration with digital equity stakeholders and partners. It includes
