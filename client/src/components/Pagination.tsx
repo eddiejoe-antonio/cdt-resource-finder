@@ -22,6 +22,13 @@ export default function Pagination({
 
   return (
     <div style={{ paddingBottom: 32, marginBottom: 16 }}>
+      <style>{`
+        .pagination-btn:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+          box-shadow: none !important;
+        }
+      `}</style>
       <div className="row align-items-center g-3">
         {/* ✅ Left third: Pagination */}
         <div className="col-12 col-md-4">
@@ -32,7 +39,7 @@ export default function Pagination({
             >
               <button
                 type="button"
-                className="btn btn-outline-primary"
+                className="btn btn-outline-primary pagination-btn"
                 disabled={currentPage <= 1}
                 onClick={() => onPageChange(clamp(currentPage - 1))}
               >
@@ -45,7 +52,7 @@ export default function Pagination({
 
               <button
                 type="button"
-                className="btn btn-outline-primary"
+                className="btn btn-outline-primary pagination-btn"
                 disabled={currentPage >= totalPages}
                 onClick={() => onPageChange(clamp(currentPage + 1))}
               >

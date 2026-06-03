@@ -8,9 +8,11 @@ interface ViewToggleProps {
   selectedView: ViewMode;
   handleNavigate: (view: ViewMode) => void;
   label?: string;
+  /** ID of an external element to use as the accessible label for the tablist */
+  labelId?: string;
 }
 
-const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, label }) => {
+const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, label, labelId }) => {
   const mapButtonRef = useRef<HTMLButtonElement>(null);
   const listButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -81,10 +83,20 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, l
   return (
     <div
       role="tablist"
-      aria-label={label ?? "View toggle"}
+      aria-labelledby={labelId ?? undefined}
+      aria-label={!labelId ? (label ?? "View toggle") : undefined}
       onKeyDown={onKeyDown}
       style={{ display: "flex", width: "100%", fontSize: FONT_SIZE }}
     >
+      <style>{`
+        .view-toggle-btn:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+          box-shadow: none !important;
+          z-index: 1;
+          position: relative;
+        }
+      `}</style>
       <button
         ref={mapButtonRef}
         type="button"
@@ -92,6 +104,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, l
         aria-selected={selectedView === "map"}
         tabIndex={0}
         onClick={() => setView("map")}
+        className="view-toggle-btn"
         style={btnStyle(selectedView === "map", "left")}
       >
         <span className="ca-gov-icon-road-pin" aria-hidden="true" style={{ fontSize: FONT_SIZE }} />
@@ -105,6 +118,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({ selectedView, handleNavigate, l
         aria-selected={selectedView === "list"}
         tabIndex={0}
         onClick={() => setView("list")}
+        className="view-toggle-btn"
         style={btnStyle(selectedView === "list", "right")}
       >
         <span className="ca-gov-icon-table" aria-hidden="true" style={{ fontSize: FONT_SIZE }} />

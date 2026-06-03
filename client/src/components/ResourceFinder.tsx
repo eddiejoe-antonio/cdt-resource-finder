@@ -164,6 +164,15 @@ export default function ResourceFinder() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
 
+  // Set descriptive page title and lang attribute (Siteimprove: page title, page language)
+  useEffect(() => {
+    document.title = "Digital Equity Resource Finder – California Department of Technology";
+    const htmlEl = document.documentElement;
+    if (!htmlEl.getAttribute("lang")) {
+      htmlEl.setAttribute("lang", "en");
+    }
+  }, []);
+
   const [viewMode, setViewMode] = useState<ViewMode>("map");
 
   const [audience, setAudience] = useState<Audience>("Resident");
@@ -191,6 +200,10 @@ export default function ResourceFinder() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const hoverPopupRef = useRef<mapboxgl.Popup | null>(null);
   const resultsHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  // Ref to the side-panel scroll container so we can scrollIntoView on the active item
+  const sidePanelRef = useRef<HTMLDivElement | null>(null);
+  // Ref to restore focus to the "Zoom to this resource" button after "Back to all results"
+  const lastZoomButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const coordByIdRef = useRef<Map<string, [number, number]>>(new Map());
   const allIdsRef = useRef<string[]>([]);
@@ -709,10 +722,40 @@ export default function ResourceFinder() {
       const logoEl = map.getContainer().querySelector<HTMLElement>(".mapboxgl-ctrl-logo");
       if (logoEl) logoEl.setAttribute("tabindex", "1");
 
+      // Siteimprove: Image missing a text alternative — Mapbox logo <img> has no alt
+      const logoImg = logoEl?.querySelector<HTMLImageElement>("img");
+      if (logoImg && !logoImg.getAttribute("alt")) {
+        logoImg.setAttribute("alt", "Mapbox logo");
+      }
+
       const attrLinks = Array.from(
         map.getContainer().querySelectorAll<HTMLElement>(".mapboxgl-ctrl-attrib a")
       );
       attrLinks.forEach((a) => a.setAttribute("tabindex", "2"));
+
+      // Siteimprove: Keyboard focus indicator is missing — NavigationControl buttons
+      // need visible :focus-visible outlines. Inject a stylesheet into the map container.
+      const mapStyleEl = document.createElement("style");
+      mapStyleEl.textContent = `
+        .mapboxgl-ctrl button:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+          box-shadow: none !important;
+        }
+        .mapboxgl-ctrl-logo:focus-visible,
+        .mapboxgl-ctrl-attrib a:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+        }
+      `;
+      map.getContainer().appendChild(mapStyleEl);
+
+      // Siteimprove: Button missing a text alternative — Mapbox NavigationControl
+      // zoom buttons may not have accessible names in all versions.
+      const zoomInBtn = map.getContainer().querySelector<HTMLElement>(".mapboxgl-ctrl-zoom-in");
+      const zoomOutBtn = map.getContainer().querySelector<HTMLElement>(".mapboxgl-ctrl-zoom-out");
+      if (zoomInBtn && !zoomInBtn.getAttribute("aria-label")) zoomInBtn.setAttribute("aria-label", "Zoom in");
+      if (zoomOutBtn && !zoomOutBtn.getAttribute("aria-label")) zoomOutBtn.setAttribute("aria-label", "Zoom out");
 
       prevWantedIdsRef.current = new Set(allIdsRef.current);
 
@@ -1001,6 +1044,14 @@ export default function ResourceFinder() {
     return chosen ? [chosen] : sortedFiltered;
   }, [sortedFiltered, selectedResourceId]);
 
+  // When the side panel switches to showing only the selected resource,
+  // scroll the panel to the top so the visual position matches screen-reader position.
+  useEffect(() => {
+    if (selectedResourceId && sidePanelRef.current) {
+      sidePanelRef.current.scrollTop = 0;
+    }
+  }, [selectedResourceId]);
+
   if (loading) {
     return (
       <div className="p-4" role="status" aria-live="polite">
@@ -1019,6 +1070,43 @@ export default function ResourceFinder() {
 
   return (
     <div className="container-fluid">
+      {/*
+        Siteimprove: Keyboard focus indicator is missing (19 instances).
+        These global styles ensure every interactive element in the finder has a
+        visible :focus-visible ring. Scoped to .resource-finder-root to avoid
+        bleeding into the host page.
+        Siteimprove: Color contrast — btn-outline-primary default CDS color may
+        fail at small text sizes; override to a darker blue that meets 4.5:1.
+      */}
+      <style>{`
+        .resource-finder-root *:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+          box-shadow: none !important;
+        }
+        .resource-finder-root a:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+          text-decoration: underline;
+        }
+        .resource-finder-root .btn-outline-primary {
+          color: #0d4f86;
+          border-color: #0d4f86;
+        }
+        .resource-finder-root .btn-outline-primary:hover,
+        .resource-finder-root .btn-outline-primary:focus {
+          background-color: #0d4f86;
+          color: #ffffff;
+        }
+        .resource-finder-root select:focus-visible,
+        .resource-finder-root input:focus-visible {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 0 !important;
+          border-color: #1a6faf !important;
+          box-shadow: none !important;
+        }
+      `}</style>
+      <div className="resource-finder-root">
       <header className="iframe-styles md:mx-32 lg:mx-64" style={{ marginTop: 0 }}>
         <div
           className="text-white py-4 px-4"
@@ -1066,6 +1154,7 @@ export default function ResourceFinder() {
               className="btn btn-outline-primary"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Add a Resource (opens in a new tab)"
             >
               Add a Resource
             </a>
@@ -1074,6 +1163,7 @@ export default function ResourceFinder() {
               className="btn btn-outline-primary"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Update a Resource (opens in a new tab)"
             >
               Update a Resource
             </a>
@@ -1114,9 +1204,9 @@ export default function ResourceFinder() {
                         type="radio"
                         name="audience-resident"
                         id="audienceResident"
+                        value="Resident"
                         checked={audience === "Resident"}
                         onChange={() => onAudienceChange("Resident")}
-                        onKeyDown={(e) => { if (e.key === "Enter") onAudienceChange("Resident"); }}
                         style={{ border: "2px solid #595959" }}
                       />
                       <label className="form-check-label" htmlFor="audienceResident">
@@ -1129,9 +1219,9 @@ export default function ResourceFinder() {
                         type="radio"
                         name="audience-organization"
                         id="audienceOrganization"
+                        value="Organization"
                         checked={audience === "Organization"}
                         onChange={() => onAudienceChange("Organization")}
-                        onKeyDown={(e) => { if (e.key === "Enter") onAudienceChange("Organization"); }}
                         style={{ border: "2px solid #595959" }}
                       />
                       <label className="form-check-label" htmlFor="audienceOrganization">
@@ -1223,7 +1313,6 @@ export default function ResourceFinder() {
             <div className="row m-t-md">
               <div className="col-12 col-lg-6 m-b-sm">
                 <form
-                  role="search"
                   aria-label="Search resources"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1317,7 +1406,7 @@ export default function ResourceFinder() {
 
                       <button
                         type="submit"
-                        className="gsc-search-button bg-gray-600"
+                        className="gsc-search-button"
                         aria-label="Apply search"
                         style={{
                           flex: "0 0 44px",
@@ -1327,6 +1416,9 @@ export default function ResourceFinder() {
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
+                          backgroundColor: "#0d4f86",
+                          border: "2px solid #0d4f86",
+                          borderRadius: "0 6px 6px 0",
                         }}
                       >
                         <span
@@ -1344,19 +1436,21 @@ export default function ResourceFinder() {
               <div className="col-12 col-lg-6 m-b-sm">
                 <div className="d-flex align-items-end h-100">
                   <div className="w-100">
-                    <label
+                    <span
+                      id="view-toggle-label"
                       className="form-label d-inline-flex align-items-center"
-                      htmlFor="view-toggle"
                     >
                       <span>View</span>
                       <Tooltip text="Switch between map view and tabular (list) view." />
-                    </label>
+                    </span>
                     <div>
                       <ViewToggle
                         selectedView={viewMode}
                         handleNavigate={(view) => {
                           setViewMode(view);
                         }}
+                        label="View"
+                        labelId="view-toggle-label"
                       />
                     </div>
                   </div>
@@ -1426,7 +1520,8 @@ export default function ResourceFinder() {
                 <div className="card" aria-labelledby="map-results-heading">
                   <div
                     className="card-body p-0"
-                    style={{ maxHeight: "500px", overflow: "auto" }}
+                    ref={sidePanelRef}
+                    style={{ maxHeight: "500px", overflow: "auto", scrollBehavior: "smooth", overflowAnchor: "none" }}
                   >
                     <h3 id="map-results-heading" className="sr-only">
                       Map results list
@@ -1456,11 +1551,13 @@ export default function ResourceFinder() {
 
                             {!selectedResourceId && (
                               <div>
+                                <style>{`.zoom-btn:focus-visible{outline:3px solid #1a6faf!important;outline-offset:2px!important;box-shadow:none!important;}`}</style>
                                 <button
                                   type="button"
-                                  className="btn btn-outline-primary w-100"
+                                  className="btn btn-outline-primary w-100 zoom-btn"
                                   aria-label={`Zoom to ${r.name} on the map`}
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    lastZoomButtonRef.current = e.currentTarget;
                                     setSelectedResourceId(r.id);
                                     flyToResourceId(r.id);
                                   }}
@@ -1476,13 +1573,23 @@ export default function ResourceFinder() {
 
                     {selectedResourceId && (
                       <div>
+                        <style>{`.back-btn:focus-visible{outline:3px solid #1a6faf!important;outline-offset:2px!important;box-shadow:none!important;}`}</style>
                         <button
                           type="button"
-                          className="btn btn-outline-primary w-100"
+                          className="btn btn-outline-primary w-100 back-btn"
                           aria-label="Back to all results and zoom out on the map"
                           onClick={() => {
                             setSelectedResourceId(null);
                             flyToCountyOrCalifornia(selectedCounty);
+                            // Restore focus to the button that triggered the zoom,
+                            // then scroll it into view in the side panel (WCAG 2.4.3)
+                            requestAnimationFrame(() => {
+                              const btn = lastZoomButtonRef.current;
+                              if (btn) {
+                                btn.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                                btn.focus();
+                              }
+                            });
                           }}
                         >
                           Back to all results
@@ -1584,6 +1691,7 @@ export default function ResourceFinder() {
           <a href="mailto:DEResourceFinder@state.ca.gov">DEResourceFinder@state.ca.gov</a>.
         </p>
       </section>
+      </div>
     </div>
   );
 }

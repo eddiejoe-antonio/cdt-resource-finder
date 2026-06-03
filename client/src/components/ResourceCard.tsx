@@ -82,6 +82,15 @@ export const ResourceCard: React.FC<Props> = ({
 
   return (
     <article className="card h-100">
+      {/* Focus-visible styles for links and buttons inside cards */}
+      <style>{`
+        .resource-card-link:focus-visible,
+        .resource-card-link:focus {
+          outline: 3px solid #1a6faf !important;
+          outline-offset: 2px !important;
+          box-shadow: none !important;
+        }
+      `}</style>
       <div className="card-body bg-gray-50 shadow-sm rounded-md border-gray-300 border d-flex flex-column h-100">
         <div>
           <h4 className="h5 m-0">{resource.name || "Untitled organization"}</h4>
@@ -89,6 +98,7 @@ export const ResourceCard: React.FC<Props> = ({
           <ul className="list-unstyled m-t-md m-b-0">
             {address && (
               <li className="d-flex align-items-start m-b-sm">
+                {/* role="img" + aria-label gives the icon meaningful context instead of being purely empty */}
                 <span
                   className="ca-gov-icon-location m-r-sm flex-shrink-0"
                   aria-hidden="true"
@@ -100,7 +110,7 @@ export const ResourceCard: React.FC<Props> = ({
                     href={addressLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-normal min-w-0"
+                    className="text-normal min-w-0 resource-card-link"
                     style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
                     aria-label={`Open ${
                       resource.name || "this location"
@@ -125,11 +135,12 @@ export const ResourceCard: React.FC<Props> = ({
                   href={websiteHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0"
+                  className="min-w-0 resource-card-link"
                   style={{
                     overflowWrap: "anywhere",
                     wordBreak: "break-word",
                   }}
+                  aria-label={`${resource.website} (opens in a new tab)`}
                 >
                   {resource.website}
                 </a>
@@ -141,14 +152,14 @@ export const ResourceCard: React.FC<Props> = ({
             <div id={detailsId} className="m-t-md">
               <hr></hr>
                          {servicesText && (
-              <li className="d-flex align-items-start m-b-sm">
+              <p className="d-flex align-items-start m-b-sm">
                 <span
                   className="ca-gov-icon-tool m-r-sm flex-shrink-0"
                   aria-hidden="true"
                   style={iconStyle}
                 />
                   {servicesText.split(", ").join(", ")}
-              </li>
+              </p>
             )}
               {resource.languages && (
               <p className="m-b-sm d-flex align-items-start">
@@ -186,9 +197,9 @@ export const ResourceCard: React.FC<Props> = ({
                   <span className="min-w-0">
                     <a
                       href={emailHref}
-                      className="min-w-0"
+                      className="min-w-0 resource-card-link"
                       style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                      aria-label={`Email ${resource.name || "this organization"}`}
+                      aria-label={`Send email to ${resource.name || "this organization"}: ${resource.contactEmail}`}
                     >
                       {resource.contactEmail}
                     </a>
@@ -207,6 +218,7 @@ export const ResourceCard: React.FC<Props> = ({
                     {telHref ? (
                       <a
                         href={telHref}
+                        className="resource-card-link"
                         aria-label={`Call ${resource.name || "this organization"} at ${
                           resource.phone
                         }`}
@@ -225,9 +237,10 @@ export const ResourceCard: React.FC<Props> = ({
         </div>
 
         <div className="m-t-md mt-auto">
+          <style>{`.resource-toggle-btn:focus-visible{outline:3px solid #1a6faf!important;outline-offset:2px!important;box-shadow:none!important;}`}</style>
           <button
             type="button"
-            className="btn btn-outline-primary"
+            className="btn btn-outline-primary resource-toggle-btn"
             onClick={() => setShowMore((v) => !v)}
             aria-expanded={showMore}
             aria-controls={detailsId}
