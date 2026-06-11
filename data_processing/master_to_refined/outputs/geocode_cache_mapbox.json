@@ -3334,5 +3334,25 @@
   "4357 Gage Avenue, nan, Bell, CA, 90201": {
     "lat": 33.978449,
     "long": -118.189894
+  },
+  "1425 N. High Street, nan, Lakeport, CA, 95453": {
+    "lat": 39.05145,
+    "long": -122.91735
+  },
+  "14785 Burns Valley Rd, nan, Clearlake, CA, 95422": {
+    "lat": 38.964932,
+    "long": -122.634212
+  },
+  "310 Second Street, nan, Upper Lake, CA, 95485": {
+    "lat": 39.166016,
+    "long": -122.910183
+  },
+  "18847 Oak Tree Rd, nan, Nevada City, CA, 95959": {
+    "lat": 39.36452,
+    "long": -121.085093
+  },
+  "21256 Washington Street, nan, Middletown, CA, 95461": {
+    "lat": 38.750268,
+    "long": -122.615013
   }
 }
