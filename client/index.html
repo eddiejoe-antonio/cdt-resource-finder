@@ -36,12 +36,11 @@
     </script>
     <script type="text/javascript" src="https://resources.technology.ca.gov/calendar/iframeResizer.contentWindow.min.js"></script>
     <script>
-            $(window).unload(function () {
-
-                if ('parentIFrame' in window) {
-                    parentIFrame.scrollTo(0, 450);
-                }
-            });
+        window.addEventListener('unload', function () {
+            if ('parentIFrame' in window) {
+                parentIFrame.scrollTo(0, 450);
+            }
+        });
     </script>
  
 

@@ -38,7 +38,7 @@ function reportHeight() {
   clearTimeout(reportTimeout);
   reportTimeout = setTimeout(() => {
     const height = document.documentElement.scrollHeight;
-    const PARENT_ORIGIN = "https://broadbandforall.cdev.sites.ca.go";
+    const PARENT_ORIGIN = "https://broadbandforall.cdt.ca.gov/digital-equity-resource-finder/";
     window.parent.postMessage({ type: "IFRAME_HEIGHT", height }, PARENT_ORIGIN);
   }, 150);
 }
