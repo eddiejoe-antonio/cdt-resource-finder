@@ -1180,7 +1180,7 @@ export default function ResourceFinder() {
         </h2>
 
         <div className="card mb-0">
-          <div className="card-body px-0 bg-gray-50">
+          <div className="card-body px-2 bg-gray-50">
             <div className="row">
               <div className="col-12 col-lg-6">
                 {/*
