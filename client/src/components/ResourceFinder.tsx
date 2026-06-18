@@ -1107,7 +1107,7 @@ export default function ResourceFinder() {
         }
       `}</style>
       <div className="resource-finder-root">
-      <header className="iframe-styles md:mx-32 lg:mx-64" style={{ marginTop: 0 }}>
+      <header className="iframe-styles" style={{ marginTop: 0 }}>
         <div
           className="text-white py-4 px-4"
           style={{
@@ -1179,7 +1179,7 @@ export default function ResourceFinder() {
           Filters
         </h2>
 
-        <div className="card md:mx-36 mb-0">
+        <div className="card mb-0">
           <div className="card-body px-0 bg-gray-50">
             <div className="row">
               <div className="col-12 col-lg-6">
@@ -1461,7 +1461,7 @@ export default function ResourceFinder() {
         </div>
       </section>
 
-      <section className="md:mx-36" aria-labelledby="results-heading">
+      <section className="" aria-labelledby="results-heading">
         <div className="row g-3 align-items-start align-items-md-end m-b-md">
           <div className="col-12 col-lg-8">
             <h2
