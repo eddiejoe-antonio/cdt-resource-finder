@@ -89,6 +89,7 @@ export const SERVICES = [
   "Public Wi-Fi",
   "Technical Support",
   "Workforce Development Resources",
+  "Accessible technology",
 ] as const;
 
 export type Service = (typeof SERVICES)[number];
@@ -129,6 +130,7 @@ export const SERVICE_DISPLAY_LABELS: Record<Service, string> = {
   "Public Wi-Fi": "Public Wi-Fi",
   "Technical Support": "Technical support",
   "Workforce Development Resources": "Workforce development",
+  "Accessible technology": "Accessible technology",
 };
 
 /** Organization-facing service labels */
