@@ -78,6 +78,7 @@ export type County = (typeof COUNTIES)[number];
 ====================================================== */
 
 export const SERVICES = [
+    "Accessible technology",
   "Computer Center(s)",
   "Digital Navigation (in-person or virtual/call center)",
   "Digital Literacy & Skills Training",
@@ -89,7 +90,6 @@ export const SERVICES = [
   "Public Wi-Fi",
   "Technical Support",
   "Workforce Development Resources",
-  "Accessible technology",
 ] as const;
 
 export type Service = (typeof SERVICES)[number];
